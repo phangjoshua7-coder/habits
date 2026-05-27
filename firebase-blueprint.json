@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "userProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user progression, stats, gear ownership, and currency balances",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner unique ID from Firebase Auth" },
+        "email": { "type": "string", "description": "Verified user email address" },
+        "xp": { "type": "integer", "description": "Permanent total accumulated Experience Points" },
+        "coins": { "type": "integer", "description": "Current spendable Coins balance" },
+        "level": { "type": "integer", "description": "Calculated user level based on XP milestones" },
+        "streak": { "type": "integer", "description": "Current overall daily routine streak" },
+        "perfectDays": { "type": "integer", "description": "Total count of perfect days completed" },
+        "smashPowerLevel": { "type": "integer", "description": "Current upgraded smash level (1 to 5)" },
+        "lastCheckDate": { "type": "string", "description": "The date string when app logic last ran YYYY-MM-DD" },
+        "purchasedItems": { "type": "array", "description": "Array of owned items (e.g. shirtStyle, pantsStyle, eliteRacket)" },
+        "currentRacket": { "type": "string", "description": "Racket style selected" },
+        "currentShirt": { "type": "string", "description": "Shirt style selected" },
+        "currentPants": { "type": "string", "description": "Pants style selected" }
+      },
+      "required": ["userId", "email", "xp", "coins", "level", "streak", "perfectDays"]
+    },
+    "habit": {
+      "title": "Habit",
+      "description": "One of the 3 key ReadySETGO habits tracked per-user",
+      "type": "object",
+      "properties": {
+        "habitId": { "type": "string", "description": "Unique index of the habit: habit1, habit2, habit3" },
+        "name": { "type": "string", "description": "Full description of the habit" },
+        "streak": { "type": "integer", "description": "The consecutive day count for this specific habit" },
+        "lastCompletedDate": { "type": "string", "description": "Last completed date in YYYY-MM-DD format" },
+        "completed": { "type": "boolean", "description": "Completion state for today" }
+      },
+      "required": ["habitId", "name", "streak", "completed"]
+    },
+    "historyLog": {
+      "title": "HistoryLog",
+      "description": "Daily snapshot log of completions for stats calendar tracking",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "description": "Format: YYYY-MM-DD" },
+        "date": { "type": "string", "description": "YYYY-MM-DD date string" },
+        "completedHabits": { "type": "array", "description": "Array of habitIds completed on this day" },
+        "xpEarned": { "type": "integer" },
+        "coinsEarned": { "type": "integer" }
+      },
+      "required": ["logId", "date", "completedHabits"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "userProfile",
+      "description": "Core profile for authenticated sport athletes"
+    },
+    "/users/{userId}/habits/{habitId}": {
+      "schema": "habit",
+      "description": "Individual habit checkpoints and streaks"
+    },
+    "/users/{userId}/history/{logId}": {
+      "schema": "historyLog",
+      "description": "Historical routine completion history for heatmaps and charts"
+    }
+  }
+}

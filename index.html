@@ -1,0 +1,1874 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReadySETGO - Gamified Anime Routine Tracker</title>
+    
+    <!-- Design Fonts & Stylesheets -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind Engine with Theme Config -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Outfit", "ui-sans-serif", "system-ui", "sans-serif"],
+              mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+            },
+            colors: {
+              primary: "#0D0D0D",
+              secondary: "#00FFCC",
+              accent: "#FF3366",
+              "app-bg": "#121212",
+            }
+          }
+        }
+      }
+    </script>
+    
+    <!-- React & React-DOM CDNs -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel standalone on-the-fly compiler -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Firebase v10 Compat wrappers -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <style>
+      /* Retro webkit scrollbars styling */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0D0D0D;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #2C2C2C;
+        border-radius: 9px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #00FFCC;
+      }
+      
+      /* Animation keyframes */
+      @keyframes shake {
+        0%, 100% { transform: translate(0, 0); }
+        20%, 60% { transform: translate(-4px, 2px); }
+        40%, 80% { transform: translate(4px, -2px); }
+      }
+      .animate-shake {
+        animation: shake 0.4s ease-in-out;
+      }
+
+      @keyframes spin-slow {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .animate-spin-slow {
+        animation: spin-slow 15s linear infinite;
+      }
+
+      @keyframes pulse-intense {
+        0%, 100% { opacity: 0.2; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(1.05); }
+      }
+      .animate-pulse-aura {
+        animation: pulse-intense 3s ease-in-out infinite;
+      }
+
+      /* Custom mobile view margins for bottom navbar */
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 12px);
+      }
+    </style>
+  </head>
+  <body class="bg-[#121212] text-[#F3F4F6] font-sans antialiased min-h-screen flex justify-center">
+
+    <!-- Mounting element for our SPA -->
+    <div id="root" class="w-full max-w-[480px] bg-[#0E0E0E] min-h-screen shadow-2xl relative flex flex-col border-x border-[#1A1A1A] overflow-x-hidden pb-24"></div>
+
+    <!-- Main React App code -->
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+
+      // ----------------- RETRO AUDIO SYNTHESIS ENGINE -----------------
+      class AudioPlayer {
+        constructor() {
+          this.ctx = null;
+        }
+        init() {
+          if (!this.ctx) {
+            const AudioContextClass = window.AudioContext || (window).webkitAudioContext;
+            if (AudioContextClass) {
+              this.ctx = new AudioContextClass();
+            }
+          }
+          if (this.ctx && this.ctx.state === "suspended") {
+            this.ctx.resume();
+          }
+        }
+        playCompletion() {
+          try {
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(523.25, now); // C5
+            osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+            osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+            osc.frequency.setValueAtTime(1046.5, now + 0.3); // C6
+
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.45);
+          } catch(e) { console.warn(e); }
+        }
+        playSmash() {
+          try {
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(45, now + 0.22);
+
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.25);
+          } catch(e) { console.warn(e); }
+        }
+        playCoin() {
+          try {
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const playChime = (delay, freq) => {
+              if (!this.ctx) return;
+              const t = this.ctx.currentTime + delay;
+              const o = this.ctx.createOscillator();
+              const g = this.ctx.createGain();
+              o.type = "sine";
+              o.frequency.setValueAtTime(freq, t);
+              g.gain.setValueAtTime(0.1, t);
+              g.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
+              o.connect(g);
+              g.connect(this.ctx.destination);
+              o.start(t);
+              o.stop(t + 0.18);
+            };
+            playChime(0, 987.77);  // B5
+            playChime(0.06, 1318.51); // E6
+          } catch(e) { console.warn(e); }
+        }
+        playLevelUp() {
+          try {
+            this.init();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, i) => {
+              if (!this.ctx) return;
+              const o = this.ctx.createOscillator();
+              const g = this.ctx.createGain();
+              o.type = "sawtooth";
+              o.frequency.setValueAtTime(freq, now + i * 0.08);
+              g.gain.setValueAtTime(0.05, now + i * 0.08);
+              g.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.18);
+              o.connect(g);
+              g.connect(this.ctx.destination);
+              o.start(now + i * 0.08);
+              o.stop(now + i * 0.08 + 0.2);
+            });
+          } catch(e) { console.warn(e); }
+        }
+      }
+      const sound = new AudioPlayer();
+
+      // ----------------- STATIC SYSTEM DATA CONFIGS -----------------
+      const DEFAULT_HABITS = [
+        { id: "habit1", name: "Morning Hydro & Agile Stances Stretches", category: "Stretching Routine", difficulty: "Medium", xpReward: 40, streakCount: 0, completedToday: false, timesCompleted: 0 },
+        { id: "habit2", name: "30-Min Focused Racket Grip Study Drills", category: "Mental Focus Study", difficulty: "Medium", xpReward: 50, streakCount: 0, completedToday: false, timesCompleted: 0 },
+        { id: "habit3", name: "Court Footwork Aerobics Workout Core Training", category: "Physical Court Aerobics", difficulty: "Hard", xpReward: 80, streakCount: 0, completedToday: false, timesCompleted: 0 },
+      ];
+
+      const SHOP_ITEMS = [
+        { id: "racket_normal", name: "Voltric Graphite Racket Mod", category: "racket", cost: 15, description: "Precision frames painted neon green. Updates Avatar racket design.", value: "normal" },
+        { id: "racket_pro", name: "Duora Cyber Striker Pro-V", category: "racket", cost: 35, description: "Carbon nanotechnology threads emitting neon pink loops.", value: "pro" },
+        { id: "racket_godly", name: "Yonex Cosmic Aura Singularity Head", category: "racket", cost: 80, description: "Forged in interstellar trials. Floating golden light streams.", value: "godly" },
+        
+        { id: "shirt_blue", name: "Aces Sporty Blue V-Stripe Outfit", category: "shirt", cost: 10, description: "Micro-vented cobalt sportswear with cyan energy trims.", value: "blue" },
+        { id: "shirt_purple", name: "Citadel Shadow Master High-Mesh Polo", category: "shirt", cost: 25, description: "Elite compression spandex designed for stealth court sways.", value: "purple" },
+        { id: "shirt_godly", name: "Cosmic Golden Solar Flare Jersey", category: "shirt", cost: 60, description: "Radiating celestial solar threads. Transmuting yellow light glows.", value: "godly" },
+        
+        { id: "pants_sport", name: "Dynamic Carbon Flex Court Shorts", category: "pants", cost: 12, description: "Snug fit dark shorts supporting quick badminton lunges.", value: "sport" },
+        { id: "pants_gold", name: "Godly Halo Royal Golden Bottom Trousers", category: "pants", cost: 45, description: "Saturated golden fabric displaying flying dragon embroidery.", value: "gold_pants" },
+        
+        { id: "custom_shield", name: "Stitch Guardian Shield Badge", category: "badge", cost: 20, description: "Imbues standard defensive force fields on stats scoreboard.", value: "badge_shield" },
+        { id: "real_life_break", name: "Real-Life Recovery Card", category: "badge", cost: 30, description: "Adds Relaxation Guru status and unlocks defense badges.", value: "badge_guru" },
+      ];
+
+      const LEADERBOARD_USERS = [
+        { rank: 1, name: "Suresh S.", racket: "Cosmic Singularity", level: 5 },
+        { rank: 2, name: "Yuki Senpai", racket: "Duora Cyber Striker", level: 4 },
+        { rank: 3, name: "Aishwarya R.", racket: "Voltric Graphite", level: 3 },
+      ];
+
+      // ----------------- COMPACT HIGH-FIDELITY VECTOR COMPONENTS -----------------
+      const AvatarSVG = ({ level, racketType, shirtColor, pantsColor, hasBadge, isSmashing }) => {
+        // Compute colors
+        let skin = "#D4A373";
+        let hair = "#111111";
+        
+        if (level >= 3) hair = "#1B3B6F";
+        if (level >= 4) hair = "#B81D24";
+        if (level >= 5) hair = "#B58A32";
+
+        let shirt = "#ECEFF1";
+        if (shirtColor === "blue") shirt = "#2962FF";
+        if (shirtColor === "purple") shirt = "#6200EA";
+        if (shirtColor === "godly" || level >= 5) shirt = "#FFD700";
+
+        let pants = "#546E7A";
+        if (pantsColor === "sport") pants = "#212121";
+        if (pantsColor === "gold_pants" || level >= 5) pants = "#FF8F00";
+
+        let racketColor = "#8D6E63"; // wooden
+        let racketGlow = "none";
+        if (racketType === "normal") { racketColor = "#00E5FF"; racketGlow = "#00E5FF"; }
+        if (racketType === "pro") { racketColor = "#FF1744"; racketGlow = "#FF1744"; }
+        if (racketType === "godly" || level >= 5) { racketColor = "#FFEA00"; racketGlow = "#FFEA00"; }
+
+        return (
+          <div className="relative w-full h-[190px] bg-[#0E0E0E] rounded-[22px] border border-[#222] flex flex-col items-center justify-center p-3 overflow-hidden select-none">
+            {/* Speed backdrop lines */}
+            <div className="absolute inset-0 opacity-10 pointer-events-none flex flex-col justify-between p-2">
+              <div className="h-px bg-white w-full"></div>
+              <div className="h-px bg-white w-3/4 self-end"></div>
+              <div className="h-px bg-[#00FFCC] w-1/2"></div>
+            </div>
+
+            {/* Glowing active aura for levels */}
+            {level >= 2 && (
+              <div className={`absolute w-32 h-32 rounded-full filter blur-xl ${
+                level >= 5 ? "bg-amber-500/20" : level >= 3 ? "bg-purple-500/15" : "bg-emerald-500/10"
+              } animate-pulse`}></div>
+            )}
+
+            {/* Avatar drawing vector */}
+            <svg 
+              viewBox="0 0 120 120" 
+              className={`w-28 h-28 transform transition-transform duration-300 ${isSmashing ? "scale-110 -translate-y-3" : "hover:scale-105"}`}
+            >
+              <defs>
+                <filter id="glow-sh">
+                  <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                  <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
+
+              {/* Halo crown on Badminton Gods */}
+              {level >= 4 && (
+                <circle cx="60" cy="20" r="14" fill="none" stroke="#FFD700" strokeWidth="2" strokeDasharray="3 3" className="animate-spin-slow" />
+              )}
+
+              {/* Hair (Spiky Crown) */}
+              <path d="M 40,40 L 45,15 L 53,28 L 60,10 L 67,28 L 75,15 L 80,40 Z" fill={hair} />
+              
+              {/* Head Profile */}
+              <circle cx="60" cy="48" r="16" fill={skin} stroke="#1A1A1A" strokeWidth="1" />
+              
+              {/* Serious Eyes */}
+              <circle cx="54" cy="46" r="2.5" fill="#FFF" />
+              <circle cx="54" cy="46.5" r="1.2" fill="#111" />
+              <circle cx="66" cy="46" r="2.5" fill="#FFF" />
+              <circle cx="66" cy="46.5" r="1.2" fill="#111" />
+              {/* Focused Eyebrows */}
+              <path d="M 48,42 L 56,44" stroke="#000" strokeWidth="2" />
+              <path d="M 72,42 L 64,44" stroke="#000" strokeWidth="1.5" />
+              
+              {/* Smug Smoker mouth */}
+              <path d="M 57,55 Q 60,57 63,55" stroke="#111" strokeWidth="1.2" fill="none" />
+
+              {/* Muscular Torso & Spandex shirt */}
+              <path d="M 44,64 L 76,64 L 72,92 L 48,92 Z" fill={shirt} stroke="#1D1D1D" strokeWidth="1" />
+              
+              {/* Team Striker Chest badge logo */}
+              {hasBadge && (
+                <polygon points="60,70 65,75 60,80 55,75" fill="#FF3366" />
+              )}
+
+              {/* Legs and athletic trousers */}
+              <path d="M 48,90 L 58,90 L 56,115 L 46,115 Z" fill={pants} stroke="#111" />
+              <path d="M 72,90 L 62,90 L 64,115 L 74,115 Z" fill={pants} stroke="#111" />
+              <rect x="44" y="112" width="10" height="4" rx="1" fill="#FF3366" />
+              <rect x="66" y="112" width="10" height="4" rx="1" fill="#00FFCC" />
+
+              {/* Right Hand raising energetic Badminton Racket */}
+              <path d="M 74,68 L 84,48" stroke={skin} strokeWidth="4.5" strokeLinecap="round" />
+              <g transform="translate(84, 48) rotate(-22)">
+                <line x1="0" y1="0" x2="16" y2="-16" stroke="#ECEFF1" strokeWidth="2.5" />
+                <ellipse cx="23" cy="-23" rx="8" ry="11" fill="none" stroke={racketColor} strokeWidth="2.2" filter={racketGlow !== "none" ? "url(#glow-sh)" : undefined} />
+                {/* Racket string grids */}
+                <line x1="23" y1="-32" x2="23" y2="-14" stroke="#FFF" strokeWidth="0.5" opacity="0.6" />
+                <line x1="16" y1="-23" x2="30" y2="-23" stroke="#FFF" strokeWidth="0.5" opacity="0.6" />
+              </g>
+
+              {/* Shuttlecock animation elements */}
+              {level >= 2 && (
+                <g transform="translate(24, 75)" className="animate-bounce">
+                  <polygon points="10,0 4,-12 16,-12" fill="#FFF" />
+                  <ellipse cx="10" cy="2" rx="3.5" ry="3.5" fill="#00FFCC" />
+                </g>
+              )}
+            </svg>
+
+            {/* Live Specs Tag overlays */}
+            <div className="absolute top-2.5 left-2.5 bg-[#0D0D0D]/90 border border-secondary/20 px-2 py-0.5 rounded-full flex items-center space-x-1 font-mono text-[9px] font-bold">
+              <span className="text-[#00FFCC]">LV.</span>
+              <span className="text-white font-extrabold">{level}</span>
+            </div>
+            <span className="absolute bottom-2.5 right-2.5 text-[8px] font-mono tracking-wider font-extrabold text-gray-500 uppercase">
+              {level >= 4 ? "STRIKER GOD" : level >= 2 ? "ASPIRANT ACE" : "CADET INITIATE"}
+            </span>
+          </div>
+        );
+      };
+
+      const EnemySVG = ({ id, damageShake }) => {
+        let name = "Li Ning";
+        let outfit = "#B91C1C"; // budget red
+        let skin = "#FFE0B2";
+        let faceDetails = "#37474F";
+        let threatColor = "#FF3366";
+        let threatLevel = "⭐⭐";
+        let shieldAura = "rgba(0,0,0,0)";
+
+        if (id === "victor") {
+          name = "Victor Boss";
+          outfit = "#1E3A8A"; // blue
+          threatColor = "#3B82F6";
+          threatLevel = "⭐⭐⭐";
+          shieldAura = "rgba(59,130,246,0.15)";
+        } else if (id === "yonex") {
+          name = "Champion Yonex";
+          outfit = "#2A004F"; // interstellar purple
+          threatColor = "#8B5CF6";
+          threatLevel = "⭐⭐⭐⭐⭐";
+          shieldAura = "rgba(139,92,246,0.3)";
+        }
+
+        return (
+          <div className={`relative w-full h-[190px] bg-[#070707] rounded-[22px] border flex flex-col items-center justify-center p-3 overflow-hidden select-none transition-all ${
+            damageShake ? "border-accent animate-shake" : "border-[#222]"
+          }`}>
+            {/* Dark Energy shield */}
+            {id === "yonex" && (
+              <div className="absolute inset-0 pointer-events-none border border-purple-500/30 rounded-[22px] animate-pulse-aura bg-gradient-to-t from-purple-950/10 to-transparent"></div>
+            )}
+
+            <svg viewBox="0 0 120 120" className="w-28 h-28">
+              {/* Sinister Arena grid backing */}
+              <circle cx="60" cy="55" r="42" fill="none" stroke={threatColor} strokeWidth="0.8" strokeDasharray="4 2" opacity="0.15" />
+              
+              {/* Spiky Dark Evil Hair */}
+              <path d="M 40,42 L 32,20 L 45,28 L 60,12 L 75,28 L 88,20 L 80,42 Z" fill="#2C3E50" />
+              
+              {/* Boss Face */}
+              <circle cx="60" cy="48" r="16" fill={skin} stroke="#000" strokeWidth="1" />
+              
+              {/* Menacing angled eyes */}
+              <polygon points="50,44 58,48 50,49" fill={id === "yonex" ? "#FF3366" : "#111"} />
+              <polygon points="70,44 62,48 70,49" fill={id === "yonex" ? "#FF3366" : "#111"} />
+              
+              {/* Grinning dark teeth */}
+              <path d="M 54,56 Q 60,62 66,54" fill="none" stroke="#000" strokeWidth="1.5" />
+
+              {/* Boss Armor Torso */}
+              <path d="M 44,64 L 76,64 L 72,92 L 48,92 Z" fill={outfit} stroke="#0D0D0D" strokeWidth="1.5" />
+              
+              {/* Racket of Rival */}
+              <path d="M 46,68 L 36,48" stroke={skin} strokeWidth="4.5" strokeLinecap="round" />
+              <g transform="translate(36, 48) rotate(22)">
+                <line x1="0" y1="0" x2="-14" y2="-14" stroke="#90A4AE" strokeWidth="2.5" />
+                <ellipse cx="-20" cy="-20" rx="7" ry="10" fill="none" stroke={id === "yonex" ? "#9C27B0" : "#795548"} strokeWidth="2.2" />
+              </g>
+            </svg>
+
+            {/* Boss Threat info badges */}
+            <div className="absolute top-2.5 left-2.5 flex flex-col items-start font-mono">
+              <span className="text-gray-500 text-[7px] uppercase font-bold tracking-widest">RIVAL TARGET</span>
+              <span className="text-white text-[11px] font-extrabold tracking-tight leading-tight uppercase font-sans">{name}</span>
+            </div>
+            <div className="absolute bottom-2.5 right-2.5 bg-primary border border-white/5 py-0.5 px-2 rounded-full flex items-center font-mono text-[8px] font-bold">
+              <span className="text-gray-500 uppercase tracking-tight mr-1">Fierce:</span>
+              <span className="text-amber-400">{threatLevel}</span>
+            </div>
+          </div>
+        );
+      };
+
+      // ----------------- TOAST SYSTEM -----------------
+      const ToastContainer = ({ toasts, removeToast }) => {
+        return (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center space-y-2 w-full max-w-[320px] pointer-events-none px-4">
+            {toasts.map((t) => {
+              let border = "border-[#00FFCC]";
+              let symbol = "✅";
+              if (t.type === "award") { border = "border-[#FF3366] bg-red-950/10"; symbol = "🏆"; }
+              if (t.type === "streak") { border = "border-orange-500"; symbol = "🔥"; }
+              if (t.type === "warning") { border = "border-red-500 bg-red-950/20"; symbol = "🚨"; }
+              if (t.type === "shop") { border = "border-amber-400"; symbol = "🛍️"; }
+
+              return (
+                <div 
+                  key={t.id} 
+                  className={`pointer-events-auto bg-[#0F0F0FCC]/95 border-2 ${border} shadow-2xl rounded-2xl p-3.5 flex items-center space-x-3 w-full backdrop-blur-md transition-all duration-300 transform scale-100`}
+                >
+                  <span className="text-base select-none">{symbol}</span>
+                  <div className="flex-1 text-[11px] font-bold text-white tracking-wide leading-snug">
+                    {t.text}
+                  </div>
+                  <button 
+                    onClick={() => removeToast(t.id)} 
+                    className="text-gray-500 hover:text-white font-mono text-xs select-none cursor-pointer p-0.5"
+                  >
+                    &times;
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      };
+
+      // ----------------- GYM EYE AI SCANNER MODAL -----------------
+      const GymEyeModal = ({ isOpen, habit, onClose, onVerified, showToast }) => {
+        const [activeStep, setActiveStep] = useState("camera"); // camera | simulator
+        const [uploading, setUploading] = useState(false);
+        const [isProcessing, setIsProcessing] = useState(false);
+        const [simLogs, setSimLogs] = useState("");
+
+        useEffect(() => {
+          if (habit) {
+            setActiveStep("camera");
+            setUploading(false);
+            setIsProcessing(false);
+            // Dynamic telemetry data mockups to emulate real hardware scanners
+            const sampleTelemetry = {
+              "habitId": habit.id,
+              "sensor_engine_state": "ACTIVE_COURT_POSE",
+              "gforce_axes": { "x": 0.12, "y": -0.45, "z": 0.98 },
+              "frequency_check": "1.33Hz (Consistent swings detected)",
+              "telemetry_log_string": `Simulating active gym routine loop logs for routine metric: ${habit.name}. Target checked.`
+            };
+            setSimLogs(JSON.stringify(sampleTelemetry, null, 2));
+          }
+        }, [habit]);
+
+        if (!isOpen || !habit) return null;
+
+        const handleActionTrigger = () => {
+          setIsProcessing(true);
+          sound.playSmash();
+          
+          setTimeout(() => {
+            setIsProcessing(false);
+            // Triggers reward on successful local simulations
+            let rewardXp = habit.xpReward;
+            let rewardCoins = 10;
+            if (habit.id === "habit2") rewardCoins = 15;
+            if (habit.id === "habit3") rewardCoins = 25;
+
+            const feedbackMessages = [
+              "Sensational stance discipline verified! Camera tracking observed deep squats and straight knee alignments. Incredibly athletic routine done! +Reward fully added.",
+              "Study focus telemetry confirmed. Zero high-flicker rapid shifts. Excellent tactical reading! Mental state index in focus green zone.",
+              "Aerobic swing intensity checked. High kinetic G-forces matches premium champion drills. Smashed perfectly!"
+            ];
+
+            const chosenMessage = feedbackMessages[Math.floor(Math.random() * feedbackMessages.length)];
+            onVerified(habit.id, rewardXp, rewardCoins, chosenMessage);
+          }, 1500); // 1.5s professional delay simulating AI scanning
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
+            <div className="relative bg-[#161616] border-2 border-secondary/20 rounded-[28px] max-w-sm w-full p-5 shadow-2xl relative z-10 space-y-4">
+              <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xl animate-spin-slow">🌟</span>
+                  <div className="text-left">
+                    <span className="text-[8px] font-mono font-black uppercase text-secondary">Gym Eye AI Vision</span>
+                    <h3 className="text-xs font-bold text-white truncate max-w-[190px]">{habit.name}</h3>
+                  </div>
+                </div>
+                <button onClick={onClose} className="rounded-full bg-[#222] text-gray-400 p-1 font-mono text-xs hover:text-white">&times;</button>
+              </div>
+
+              {/* Tab Selector */}
+              <div className="grid grid-cols-2 gap-2 bg-black/50 p-1 rounded-xl">
+                <button 
+                  onClick={() => setActiveStep("camera")} 
+                  className={`py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition-all ${activeStep === "camera" ? "bg-secondary text-[#0E0E0E]" : "text-gray-400"}`}
+                >
+                  📸 Camera Eye
+                </button>
+                <button 
+                  onClick={() => setActiveStep("simulator")} 
+                  className={`py-1.5 rounded-lg text-[10px] font-extrabold uppercase transition-all ${activeStep === "simulator" ? "bg-secondary text-[#0E0E0E]" : "text-gray-400"}`}
+                >
+                  ⚡ G-Sensors
+                </button>
+              </div>
+
+              {activeStep === "camera" ? (
+                <div className="space-y-3.5">
+                  <div className="relative h-40 bg-black rounded-2xl flex flex-col items-center justify-center border border-zinc-800 p-2 overflow-hidden">
+                    <span className="text-xs text-gray-500 font-bold mb-1">We need webcam permissions</span>
+                    <p className="text-[10px] text-zinc-600 text-center font-bold px-4 leading-normal">
+                      Local sandbox running. Camera frame simulated. Upload an athletic selfie to complete Gym Vision visual scans.
+                    </p>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => {
+                        setUploading(true);
+                        showToast("Visual snapshot imported successfully!", "success");
+                      }}
+                      className="mt-2 text-[10px] text-gray-400" 
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <span className="text-[9px] font-mono text-zinc-500 block uppercase font-bold text-left">Real-Time Mobile G-Force Logs</span>
+                  <textarea 
+                    value={simLogs} 
+                    onChange={(e) => setSimLogs(e.target.value)}
+                    className="w-full h-32 bg-black font-mono text-[9px] text-[#00FFCC] p-3 rounded-xl border border-zinc-900 focus:outline-none focus:border-secondary" 
+                  />
+                </div>
+              )}
+
+              {/* Actions */}
+              <button 
+                onClick={handleActionTrigger}
+                disabled={isProcessing}
+                className="w-full bg-secondary text-primary font-black py-2.5 rounded-full text-xs font-sans tracking-widest uppercase hover:opacity-90 transition-opacity flex items-center justify-center space-x-2"
+              >
+                {isProcessing ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-primary" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span>ANALYST EVALUATING...</span>
+                  </>
+                ) : (
+                  <span>RUN VISION VERIFY SCAN</span>
+                )}
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      // ----------------- MAIN APP COMPONENT CONTAINER -----------------
+      function App() {
+        // UI states
+        const [activeTab, setActiveTab] = useState("home"); // home | stats | shop | journal | more
+        const [moreSubTab, setMoreSubTab] = useState("leaderboard"); // leaderboard | calendar | challenges | specs
+        const [toasts, setToasts] = useState([]);
+        const [countdownString, setCountdownString] = useState("12:00:00");
+        const [selectedHabitForAI, setSelectedHabitForAI] = useState(null);
+        
+        // Battle effects state
+        const [isSmashing, setIsSmashing] = useState(false);
+        const [enemyShake, setEnemyShake] = useState(false);
+        const [showLevelUpCinematic, setShowLevelUpCinematic] = useState(null);
+        const [showPerfectBonusBanner, setShowPerfectBonusBanner] = useState(false);
+
+        // Core data State Engine (Category B / C - dynamic metrics state tracker)
+        const [profile, setProfile] = useState({
+          userId: "GUEST",
+          email: "sportguest@readysetgo.io",
+          xp: 0,
+          coins: 40,
+          level: 1,
+          hp: 100,
+          streak: 0,
+          perfectDaysCount: 0,
+          smashPowerLevel: 1,
+          lastCheckDate: "",
+          purchasedItems: [],
+          currentRacket: "wood",
+          currentShirt: "casual",
+          currentPants: "casual",
+          badges: ["Cadet Recruit"],
+          statsWeeklyXP: [45, 90, 120, 30, 110, 80, 0]
+        });
+
+        const [habits, setHabits] = useState(DEFAULT_HABITS);
+        const [challenges, setChallenges] = useState([
+          { id: "ch1", name: "Rival Li Ning Smasher Quest", description: "Clear 3 daily habits entirely today.", target: 3, current: 0, rewardCoins: 30, completed: false },
+          { id: "ch2", name: "Study Marathon Mind Mastery", description: "Practice study focused core timers.", target: 2, current: 0, rewardCoins: 20, completed: false }
+        ]);
+
+        const [journalNote, setJournalNote] = useState("");
+        const [journalEntries, setJournalEntries] = useState([
+          { date: "Yesterday", note: "Successfully loaded early badminton swings. Hydrated neatly! Core physical is stable flat." }
+        ]);
+
+        // AI Coach lab custom overlays - variables
+        const [activeCoachLayer, setActiveCoachLayer] = useState("vision"); // vision | cognitive | optimization
+        const [mealText, setMealText] = useState("");
+        const [mealResult, setMealResult] = useState(null);
+        const [aiProcessing, setAiProcessing] = useState(false);
+        const [stretchClock, setStretchClock] = useState(null);
+        const [stretchSeconds, setStretchSeconds] = useState(60);
+        const [sunlightResult, setSunlightResult] = useState(null);
+        const [feynmanResult, setFeynmanResult] = useState(null);
+        const [feynmanText, setFeynmanText] = useState("");
+        const [coachSpeechStyle, setCoachSpeechStyle] = useState("coach_li_ning"); // drill_sergeant | sarcastic_robot | coach_li_ning
+
+        // Toast dispatch UI Helper
+        const showToast = (text, type = "success") => {
+          const id = Math.random().toString();
+          setToasts((prev) => [...prev, { id, text, type }]);
+          setTimeout(() => removeToast(id), 3000);
+        };
+        const removeToast = (id) => {
+          setToasts((prev) => prev.filter((t) => t.id !== id));
+        };
+
+        // Firebase Sync Loader & Date Attacking checks
+        useEffect(() => {
+          // Initialize countdown clock
+          const timer = setInterval(() => {
+            const now = new Date();
+            const tomorrow = new Date();
+            tomorrow.setHours(23, 59, 59, 999);
+            const diff = tomorrow - now;
+            const hrs = Math.floor(diff / (1000 * 60 * 60)).toString().padStart(2, "0");
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2, "0");
+            const secs = Math.floor((diff % (1000 * 60)) / 1000).toString().padStart(2, "0");
+            setCountdownString(`${hrs}:${mins}:${secs}`);
+          }, 1000);
+
+          // Standard local storage recovery fallback
+          const savedProf = localStorage.getItem("setgo_prof");
+          const savedHabits = localStorage.getItem("setgo_habits");
+          const savedChallenges = localStorage.getItem("setgo_chall");
+          const savedLogs = localStorage.getItem("setgo_logs");
+
+          let recoveredProf = null;
+          if (savedProf) {
+            try {
+              recoveredProf = JSON.parse(savedProf);
+              setProfile(recoveredProf);
+            } catch(e) { console.error(e); }
+          }
+          if (savedHabits) {
+            try { setHabits(JSON.parse(savedHabits)); } catch(e) {}
+          }
+          if (savedChallenges) {
+            try { setChallenges(JSON.parse(savedChallenges)); } catch(e) {}
+          }
+          if (savedLogs) {
+            try { setJournalEntries(JSON.parse(savedLogs)); } catch(e) {}
+          }
+
+          // Trigger Yesterday Misses Health penalties check date (HP depletion)
+          setTimeout(() => {
+            const targetProfile = recoveredProf || profile;
+            const todayStr = new Date().toISOString().split("T")[0];
+            if (targetProfile.lastCheckDate && targetProfile.lastCheckDate !== todayStr) {
+              // Deduct Health! Boss rival attacked!
+              showToast("🚨 YESTERDAY INERTIA HAS BROKEN DISCIPLINE! Bad Habit boss attacked! -25 Stamina (HP)", "warning");
+              sound.playSmash();
+              setProfile((prev) => {
+                const newHp = Math.max(10, prev.hp - 25);
+                const isLiNingSteal = getEnemyDetails(prev.xp).id === "lining";
+                const coinDeduction = isLiNingSteal ? 1 : 0; // Li Ning stole 1 coin penalty
+                const finalCoins = Math.max(0, prev.coins - coinDeduction);
+                
+                const updated = { 
+                  ...prev, 
+                  hp: newHp, 
+                  coins: finalCoins,
+                  lastCheckDate: todayStr 
+                };
+                localStorage.setItem("setgo_prof", JSON.stringify(updated));
+                return updated;
+              });
+            } else if (!targetProfile.lastCheckDate) {
+              setProfile(prev => ({ ...prev, lastCheckDate: todayStr }));
+            }
+          }, 800);
+
+          // Hook into Firebase Cloud Firestore backup
+          if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0) {
+            const authInstance = window.firebase.auth();
+            authInstance.onAuthStateChanged(async (u) => {
+              if (u) {
+                showToast(`Cloud Profile Synced: ${u.displayName || u.email}!`, "success");
+                try {
+                  const dbInstance = window.firebase.firestore();
+                  const snap = await dbInstance.collection("users").doc(u.uid).get();
+                  if (snap.exists()) {
+                    const cloudData = snap.data();
+                    setProfile(cloudData);
+                    localStorage.setItem("setgo_prof", JSON.stringify(cloudData));
+                  }
+                } catch(e) { console.warn("Cloud Firestore reading failed, keeping local sandbox."); }
+              }
+            });
+          }
+
+          return () => clearInterval(timer);
+        }, []);
+
+        // Google Sign-In popups auth helpers
+        const handleGoogleLink = async () => {
+          if (!window.firebase || !window.firebase.auth) {
+            showToast("Firebase configurations not loaded. Operating locally sandboxed!", "warning");
+            return;
+          }
+          try {
+            const prov = new window.firebase.auth.GoogleAuthProvider();
+            const result = await window.firebase.auth().signInWithPopup(prov);
+            if (result.user) {
+              // Write a default schema profile
+              const todayStr = new Date().toISOString().split("T")[0];
+              const userRef = window.firebase.firestore().collection("users").doc(result.user.uid);
+              const userSnapshot = await userRef.get();
+              
+              let currentProf = profile;
+              if (userSnapshot.exists()) {
+                currentProf = userSnapshot.data();
+              } else {
+                currentProf = { 
+                  ...profile, 
+                  userId: result.user.uid, 
+                  email: result.user.email,
+                  lastCheckDate: todayStr 
+                };
+                await userRef.set(currentProf);
+              }
+              setProfile(currentProf);
+              localStorage.setItem("setgo_prof", JSON.stringify(currentProf));
+              showToast(`Successfully connected: ${result.user.displayName}`, "success");
+            }
+          } catch(err) {
+            console.error(err);
+            showToast("Google connection failed or cancelled by viewport.", "warning");
+          }
+        };
+
+        const handleGoogleDisconnect = async () => {
+          if (window.firebase && window.firebase.auth) {
+            await window.firebase.auth().signOut();
+            showToast("Disconnected secure cloud account details.", "success");
+          }
+          setProfile(prev => ({ ...prev, userId: "GUEST", email: "guest@readysetgo.io" }));
+        };
+
+        // Storage saver tool
+        const saveState = (updatedProf, updatedHabits) => {
+          localStorage.setItem("setgo_prof", JSON.stringify(updatedProf));
+          localStorage.setItem("setgo_habits", JSON.stringify(updatedHabits));
+
+          if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0) {
+            const curUser = window.firebase.auth().currentUser;
+            if (curUser) {
+              const uRef = window.firebase.firestore().collection("users").doc(curUser.uid);
+              uRef.set(updatedProf, { merge: true }).catch(err => console.log("Firebase block sync delays. This is fine."));
+            }
+          }
+        };
+
+        // level configuration metrics
+        const getLevelName = (xpValue) => {
+          if (xpValue >= 3000) return 5;
+          if (xpValue >= 1800) return 4;
+          if (xpValue >= 1000) return 3;
+          if (xpValue >= 450) return 2;
+          return 1;
+        };
+
+        // Enemy calculations based on current XP
+        const getEnemyDetails = (xpCount) => {
+          if (xpCount >= 1800) {
+            return { id: "yonex", name: "Interstellar Aura Yonex Bot", hp: 300, attackEffect: "Total standard XP freeze multiplier cuts", fierceness: "⭐⭐⭐⭐⭐" };
+          } else if (xpCount >= 450) {
+            return { id: "victor", name: "Elite Victor Striker Pack", hp: 200, attackEffect: "50% checkmarks rate coin cuts", fierceness: "⭐⭐⭐" };
+          } else {
+            return { id: "lining", name: "Rookie Li Ning Cadet", hp: 100, attackEffect: "1 coin stolen on day missed penalty", fierceness: "⭐⭐" };
+          }
+        };
+
+        const getBossHealthPct = () => {
+          const completedCount = habits.filter(h => h.completedToday).length;
+          if (completedCount === 3) return 0;
+          if (completedCount === 2) return 33;
+          if (completedCount === 1) return 67;
+          return 100;
+        };
+
+        // Complete Check checkmarks and smash animations
+        const handleHabitToggle = (habitId) => {
+          const target = habits.find(h => h.id === habitId);
+          if (!target) return;
+
+          if (target.completedToday) {
+            // Uncheck
+            const updated = habits.map(h => h.id === habitId ? { ...h, completedToday: false } : h);
+            setHabits(updated);
+            showToast("Drill mark undone.", "warning");
+            saveState(profile, updated);
+            return;
+          }
+
+          // Trigger vision or simulations modal eye scanner
+          setSelectedHabitForAI(target);
+        };
+
+        const executeVerifyAward = (habitId, rewardXp, rewardCoins, aiFeedbackText) => {
+          sound.playSmash();
+          setIsSmashing(true);
+          setEnemyShake(true);
+          setSelectedHabitForAI(null);
+
+          setTimeout(() => {
+            setIsSmashing(false);
+            setEnemyShake(false);
+          }, 500);
+
+          // Multiplier calculation depending on Level debuffs & Streaks
+          let finalXpGain = rewardXp;
+          let finalCoinsGain = rewardCoins;
+          let bonusDeets = "";
+
+          // Streak 2x XP Multipliers (Category C - maintaining high-consistency streak logs)
+          if (profile.streak > 0) {
+            finalXpGain = rewardXp * 2;
+            bonusDeets += " (2x Streak XP Activated!)";
+          }
+
+          const currentEnemy = getEnemyDetails(profile.xp);
+          // Victor cuts 50%
+          if (currentEnemy.id === "victor") {
+            finalXpGain = Math.round(finalXpGain * 0.5);
+            finalCoinsGain = Math.round(finalCoinsGain * 0.5);
+            bonusDeets += " [Victor Defense rate cut 50%]";
+          }
+          // Yonex blocks to 0
+          if (currentEnemy.id === "yonex") {
+            finalXpGain = 0;
+            finalCoinsGain = 0;
+            bonusDeets += " [Yonex cosmic freeze! 0 XP earnings]";
+          }
+
+          // Special Category C rule: first habit complete ever +10 coins
+          const habitNode = habits.find(h => h.id === habitId);
+          if (habitId === "habit1" && (habitNode.timesCompleted || 0) === 0) {
+            finalCoinsGain += 10;
+            showToast("🎖️ +10 First Completion Ever Coins!", "award");
+          }
+
+          // Update Habit counters
+          const updatedHabits = habits.map(h => {
+            if (h.id === habitId) {
+              const strictNewStreak = h.streakCount + 1;
+              
+              // Fitness legend: habit 3 5-day consecutive streak grants +30 coins
+              if (habitId === "habit3" && strictNewStreak % 5 === 0) {
+                finalCoinsGain += 30;
+                showToast("🔥 fitness Legend! +30 Coins Bonus on consecutive court lunges!", "award");
+              }
+
+              return {
+                ...h,
+                completedToday: true,
+                timesCompleted: (h.timesCompleted || 0) + 1,
+                streakCount: strictNewStreak
+              };
+            }
+            return h;
+          });
+
+          // Check Perfect day achievement! (All 3 items ticked)
+          const allTicked = updatedHabits.every(h => h.completedToday);
+          let perfectBonusCoins = 0;
+          let dailyStreakBonus = 0;
+          if (allTicked) {
+            perfectBonusCoins = 50; // Perfect day +50 Coins bonus
+            dailyStreakBonus = 1;
+            setShowPerfectBonusBanner(true);
+            setTimeout(() => setShowPerfectBonusBanner(false), 3800);
+            showToast("🏆 PERFECT ATHLETIC TRAINING DAY! +50 Coins & confettis", "award");
+          }
+
+          // Compute badge additions
+          let newBadges = [...profile.badges];
+          if (allTicked && !newBadges.includes("Perfect Athlete")) {
+            newBadges.push("Perfect Athlete");
+          }
+
+          // Compute levels scale changes
+          const startLvl = getLevelName(profile.xp);
+          const nextXpTotal = profile.xp + finalXpGain;
+          const endLvl = getLevelName(nextXpTotal);
+
+          // Level Evolution trigger popup
+          if (endLvl > startLvl) {
+            sound.playLevelUp();
+            setShowLevelUpCinematic(endLvl);
+            if (endLvl === 2 && !newBadges.includes("Badminton Aspirant")) newBadges.push("Badminton Aspirant");
+            if (endLvl === 3 && !newBadges.includes("Pro Court Striker")) newBadges.push("Pro Court Striker");
+            if (endLvl === 4 && !newBadges.includes("Ultimate Court Overlord")) newBadges.push("Ultimate Court Overlord");
+            if (endLvl === 5 && !newBadges.includes("God of Badminton")) newBadges.push("God of Badminton");
+          }
+
+          const freshProfile = {
+            ...profile,
+            xp: nextXpTotal,
+            coins: profile.coins + finalCoinsGain + perfectBonusCoins,
+            level: endLvl,
+            streak: profile.streak + dailyStreakBonus,
+            perfectDaysCount: profile.perfectDaysCount + (allTicked ? 1 : 0),
+            badges: newBadges,
+            hp: Math.min(100, profile.hp + 5) // Completing routine grants 5 stamina HP
+          };
+
+          setHabits(updatedHabits);
+          setProfile(freshProfile);
+          showToast(`Smash Hit! +${finalXpGain} XP | +${finalCoinsGain} Coins ${bonusDeets}`, "success");
+          saveState(freshProfile, updatedHabits);
+
+          // Increment Quest bounites
+          const updatedQuests = challenges.map((ch) => {
+            if (ch.id === "ch1") {
+              const prev = ch.current;
+              const next = Math.min(ch.target, prev + 1);
+              const done = next >= ch.target;
+              if (done && !ch.completed) {
+                showToast(`🏆 Bounty Claimed: +${ch.rewardCoins} Coins!`, "award");
+                sound.playCoin();
+                setProfile(p => ({ ...p, coins: p.coins + ch.rewardCoins }));
+              }
+              return { ...ch, current: next, completed: done || ch.completed };
+            }
+            return ch;
+          });
+          setChallenges(updatedQuests);
+        };
+
+        // Reset Trainer habits daily manual button
+        const handleManualReset = () => {
+          showToast("Court training logs cleared for tomorrow's matches!", "streak");
+          const resetHab = habits.map(h => ({ ...h, completedToday: false }));
+          setHabits(resetHab);
+          
+          setProfile(p => {
+            const updated = { ...p, hp: 100 }; // reset Stamina to full
+            saveState(updated, resetHab);
+            return updated;
+          });
+        };
+
+        // Shop Transactions
+        const handleItemBuy = (item) => {
+          if (profile.purchasedItems.includes(item.id)) {
+            // Equip weapon gear
+            setProfile(prev => {
+              let updated = { ...prev };
+              if (item.category === "shirt") updated.currentShirt = item.value;
+              if (item.category === "pants") updated.currentPants = item.value;
+              if (item.category === "racket") updated.currentRacket = item.value;
+              
+              saveState(updated, habits);
+              showToast(`Equipped Style: ${item.name}`, "success");
+              return updated;
+            });
+            return;
+          }
+
+          if (profile.coins < item.cost) {
+            showToast("Lacking sufficient athlete currency (Coins) for buy!", "warning");
+            return;
+          }
+
+          // Procure gear
+          sound.playCoin();
+          setProfile(prev => {
+            let freshPurchased = [...prev.purchasedItems, item.id];
+            let activeBadges = [...prev.badges];
+            if (item.id === "custom_shield" && !activeBadges.includes("Aegis Defender")) activeBadges.push("Aegis Defender");
+            if (item.id === "real_life_break" && !activeBadges.includes("Relaxation Guru")) activeBadges.push("Relaxation Guru");
+
+            const updated = {
+              ...prev,
+              coins: prev.coins - item.cost,
+              purchasedItems: freshPurchased,
+              badges: activeBadges
+            };
+            saveState(updated, habits);
+            showToast(`Purchased item: ${item.name}! Claimed.`, "shop");
+            return updated;
+          });
+        };
+
+        const upgradeSmashLevel = () => {
+          if (profile.coins < 20) {
+            showToast("Lacking 20 Coins for Smashing Power!", "warning");
+            return;
+          }
+          if (profile.smashPowerLevel >= 5) {
+            showToast("Smashing power fully optimized!", "warning");
+            return;
+          }
+          sound.playCoin();
+          setProfile(prev => {
+            const updated = {
+              ...prev,
+              coins: prev.coins - 20,
+              smashPowerLevel: prev.smashPowerLevel + 1
+            };
+            saveState(updated, habits);
+            showToast(`Enhanced Smash Racket power! Tier ${prev.smashPowerLevel + 1}/5`, "success");
+            return updated;
+          });
+        };
+
+        // Athlete text logger diary list
+        const handleAddNote = () => {
+          if (!journalNote.trim()) return;
+          const fresh = {
+            date: new Date().toLocaleDateString(),
+            note: journalNote
+          };
+          const updatedLogs = [fresh, ...journalEntries];
+          setJournalEntries(updatedLogs);
+          localStorage.setItem("setgo_logs", JSON.stringify(updatedLogs));
+          setJournalNote("");
+          showToast("Logged routine review entries!", "success");
+        };
+
+        // Clean database memory
+        const handleFormatDatabase = () => {
+          localStorage.removeItem("setgo_prof");
+          localStorage.removeItem("setgo_habits");
+          localStorage.removeItem("setgo_chall");
+          localStorage.removeItem("setgo_logs");
+          window.location.reload();
+        };
+
+        // --- Simulated AI Coach Lab logic hooks ---
+        const runAIPlateScanEvent = () => {
+          if (!mealText.trim()) {
+            showToast("Provide your culinary meal descriptions first!", "warning");
+            return;
+          }
+          setAiProcessing(true);
+          sound.playSmash();
+          setTimeout(() => {
+            setAiProcessing(false);
+            const food = mealText.toLowerCase();
+            const colors = [];
+            if (food.includes("spinach") || food.includes("broccoli") || food.includes("green") || food.includes("apple") || food.includes("avocado")) colors.push("Green");
+            if (food.includes("tomato") || food.includes("berry") || food.includes("pepper") || food.includes("apple")) colors.push("Red");
+            if (food.includes("egg") || food.includes("banana") || food.includes("lemon") || food.includes("cheese") || food.includes("mango")) colors.push("Yellow");
+            
+            const met = colors.length >= 2;
+            const rewardCoins = met ? 15 : 5;
+            const rewardXp = met ? 20 : 10;
+
+            const personaSignatures = {
+              coach_li_ning: "Coach Li Ning says: Excellent organic mineral colors found in layout! Good badminton wrist muscle fluid circulation.",
+              drill_sergeant: "DRILL SERGEANT ROARS: STRIKER DIG OVER HIGH-PROTEIN FOODS! STAMINA STABILIZED! BACK ON COMPRESSION COURTS!",
+              sarcastic_robot: "BEEP-BOOP: YOUR MEAL CONTAINS REAL NUTRITION INDEXES. ANIMAL FEEDBACK ENGINE DELLS IT SATISFACTORY."
+            };
+
+            setMealResult({
+              metColors: colors.length > 0 ? colors : ["Beige/Standard"],
+              ruleMet: met,
+              feedbackText: met 
+                ? `${personaSignatures[coachSpeechStyle]} Gorgeous plate variety satisfying the classic 3-Color Rule. +15 Coins bonus awarded!`
+                : `${personaSignatures[coachSpeechStyle]} Color balance sparse. Pack green celery or banana items next turn to avoid insulin crashes!`
+            });
+
+            setProfile(p => ({ ...p, coins: p.coins + rewardCoins, xp: p.xp + rewardXp }));
+            showToast("Healthy Nutrition Verified!", "award");
+          }, 1400);
+        };
+
+        const handleFeynmanTutorToggle = () => {
+          if (!feynmanText.trim()) return;
+          setAiProcessing(true);
+          setTimeout(() => {
+            setAiProcessing(false);
+            const grading = feynmanText.split(" ").length >= 10 ? "Optimal Veteran Mastery (A)" : "Rookie Outline (B)";
+            setFeynmanResult({
+              grading,
+              mistypingCheck: "Concepts sound. Explaining technical court lunges correctly.",
+              coachCoachComment: coachSpeechStyle === "drill_sergeant" 
+                ? "EXCELLENT DESCRIPTION FIGHTER! INTUITION LOCK STABLE!" 
+                : "Coach is satisfied with your technical racket grip explanations. You earned +10 coins!"
+            });
+            setProfile(p => ({ ...p, coins: p.coins + 10 }));
+            showToast("Recall Tutoring completed!", "success");
+          }, 1200);
+        };
+
+        const handleStartStretchClocks = () => {
+          if (stretchClock) {
+            clearInterval(stretchClock);
+            setStretchClock(null);
+            return;
+          }
+          setStretchSeconds(60);
+          showToast("Desk Posture stretch starts! Expand chin & expand shoulders.", "success");
+          const clock = setInterval(() => {
+            setStretchSeconds(prev => {
+              if (prev <= 1) {
+                clearInterval(clock);
+                setStretchClock(null);
+                sound.playLevelUp();
+                showToast("🏆 Posture stretch successfully completed! Stamina fully locked.", "award");
+                setProfile(p => ({ ...p, hp: Math.min(100, p.hp + 20) }));
+                return 60;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+          setStretchClock(clock);
+        };
+
+        return (
+          <div className="flex flex-col flex-1 h-full relative">
+            
+            {/* Header HUD Space (Category A - premium visualheads up display) */}
+            <header className="bg-[#0A0A0A] p-4 border-b border-[#1A1A1A] space-y-2.5 sticky top-0 z-30 select-none">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xl animate-bounce">🏸</span>
+                  <div className="text-left">
+                    <span className="text-[10px] font-mono tracking-widest text-[#00FFCC] uppercase font-bold">COURT ARENA PRO</span>
+                    <h1 className="text-sm font-extrabold text-white leading-none tracking-tight">ReadySETGO Tracker</h1>
+                  </div>
+                </div>
+
+                {/* DB link badges */}
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  {profile.userId === "GUEST" ? (
+                    <button 
+                      onClick={handleGoogleLink}
+                      className="bg-[#212121] text-xs font-mono px-3 py-1 rounded-full text-[#00FFCC] border border-white/5 hover:border-secondary flex items-center space-x-1 active:scale-95 duration-100"
+                    >
+                      <span>☁️ Link Cloud</span>
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handleGoogleDisconnect}
+                      className="bg-red-950/20 text-[9px] font-mono px-2 py-0.5 rounded-full text-red-400 border border-red-500/10 hover:border-red-500 hover:text-white"
+                    >
+                      <span>Disconnect</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* HUD health, XP and coin levels bar layout (Category A) */}
+              <div className="grid grid-cols-3 gap-2.5 pt-1 text-left font-mono">
+                {/* Level Progress */}
+                <div className="bg-[#121212] p-2 rounded-2xl border border-zinc-900 flex flex-col justify-between">
+                  <div className="text-[9px] font-bold text-gray-500 flex justify-between items-center">
+                    <span>XP TOTAL</span>
+                    <span className="text-secondary font-black">{profile.xp} XP</span>
+                  </div>
+                  <div className="w-full bg-[#222] h-2.5 rounded-full mt-1.5 overflow-hidden p-[1.5px] border border-zinc-900">
+                    <div className="bg-[#00FFCC] h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (profile.xp % 1000) / 10)}%` }}></div>
+                  </div>
+                </div>
+
+                {/* Wallet Balance */}
+                <div className="bg-[#121212] p-2 rounded-2xl border border-zinc-900 flex flex-col justify-between">
+                  <span className="text-[9px] font-bold text-gray-500 block">WALLET COINS</span>
+                  <span className="text-sm font-black text-amber-400 block mt-1">🪙 {profile.coins} c.</span>
+                </div>
+
+                {/* HP / Stamina level health indicators (Category A) */}
+                <div className="bg-[#121212] p-2 rounded-2xl border border-zinc-900 flex flex-col justify-between">
+                  <div className="text-[9px] font-bold text-gray-500 flex justify-between items-center">
+                    <span>STAMINA (HP)</span>
+                    <span className={`font-black ${profile.hp < 40 ? "text-accent" : "text-emerald-400"}`}>{profile.hp}/100</span>
+                  </div>
+                  <div className="w-full bg-[#222] h-2.5 rounded-full mt-1.5 overflow-hidden p-[1.5px] border border-zinc-900">
+                    <div className={`h-full rounded-full transition-all ${profile.hp < 40 ? "bg-accent" : "bg-emerald-400"}`} style={{ width: `${profile.hp}%` }}></div>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            {/* Scrollable Center viewport tracking log */}
+            <main className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+              
+              {/* SCREEN 1: ARENA DASHBOARD LIST */}
+              {activeTab === "home" && (
+                <div className="space-y-6">
+                  
+                  {/* COURT FIGHT MAPS */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xs uppercase font-black text-gray-400 tracking-wider">⚡ Combat Arena</h2>
+                      <div className="bg-primary px-3 py-1 border border-[#222] rounded-xl text-[10px] font-mono text-secondary flex items-center space-x-1.5 font-bold">
+                        <span>⏳ Daily Reset In:</span>
+                        <span>{countdownString}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3.5 relative">
+                      {/* Left: Athlete Hero specifications vector */}
+                      <AvatarSVG 
+                        level={profile.level} 
+                        racketType={profile.currentRacket} 
+                        shirtColor={profile.currentShirt} 
+                        pantsColor={profile.currentPants} 
+                        hasBadge={profile.purchasedItems.includes("custom_shield")} 
+                        isSmashing={isSmashing} 
+                      />
+
+                      {/* Right: Badminton boss competitor vector */}
+                      <EnemySVG id={getEnemyDetails(profile.xp).id} damageShake={enemyShake} />
+
+                      {/* Smash splash visual overlays */}
+                      {isSmashing && (
+                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-12 animate-bounce">
+                          <span className="bg-[#FF3366] text-[#FFFFFF] px-5 py-2 rounded-full text-base font-sans font-black italic tracking-widest border border-yellow-300 shadow-2xl skew-x-12">
+                            COURT SMASH HIT!
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Boss HP bar representing defense indices */}
+                    <div className="bg-primary/90 p-3 rounded-[22px] border border-zinc-900 text-left space-y-1.5 text-shadow select-none">
+                      <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500">
+                        <span>RIVAL BAR BARRIER</span>
+                        <span className="text-[#00FFCC] font-mono font-bold uppercase">{getBossHealthPct()}% BOSS HP REMAINING</span>
+                      </div>
+                      <div className="w-full bg-[#1A1A1A] h-2 rounded-full overflow-hidden p-[1px] border border-zinc-950">
+                        <div className="bg-secondary h-full rounded-full transition-all duration-300" style={{ width: `${getBossHealthPct()}%` }}></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* DAILY EXERCISES COMPASS DRILLS */}
+                  <div className="space-y-3">
+                    <h2 className="text-left text-xs uppercase font-black text-gray-400 tracking-wider">💪 Dynamic Training Routines</h2>
+                    <div className="space-y-2.5">
+                      {habits.map((h) => (
+                        <div 
+                          key={h.id}
+                          onClick={() => handleHabitToggle(h.id)}
+                          className={`p-3.5 rounded-[22.5px] border-2 text-left cursor-pointer select-none active:scale-95 duration-100 ease-in-out transition-all relative overflow-hidden flex items-center justify-between ${
+                            h.completedToday 
+                              ? "bg-secondary/5 border-secondary/20" 
+                              : "bg-[#090909] border-[#222] hover:border-zinc-800"
+                          }`}
+                        >
+                          <div className="space-y-1 text-shadow relative z-10 max-w-[80%]">
+                            <span className="text-[7.5px] font-mono text-[#00FFCC] bg-[#1a2c27] px-1.5 py-0.5 rounded border border-secondary/10 uppercase tracking-widest font-black block w-fit">
+                              {h.category}
+                            </span>
+                            <h3 className="text-xs font-bold leading-normal text-white pt-1 select-none">{h.name}</h3>
+                            <div className="flex items-center space-x-2.5 pt-0.5 font-mono text-[9px] text-gray-500 font-extrabold uppercase">
+                              <span className="text-accent">+{h.xpReward} XP</span>
+                              <span>• StreakCount: {h.streakCount} days</span>
+                            </div>
+                          </div>
+
+                          <div className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center shrink-0 ${h.completedToday ? "border-secondary bg-secondary/10 text-secondary" : "border-zinc-750 text-gray-600"}`}>
+                            {h.completedToday ? "🟢" : <span className="text-[10px] uppercase font-mono text-[#00FFCC]">AI</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* DAILY RESET TRIGGERS */}
+                  <div className="bg-primary border border-zinc-900 p-4 rounded-[22px] text-left flex items-center justify-between">
+                    <div className="max-w-[70%] space-y-0.5">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-tight">Need to reset trainer?</h3>
+                      <p className="text-[10px] text-zinc-500 leading-normal font-bold">Force trigger an absolute simulation cycles block to restart direct habits marking.</p>
+                    </div>
+                    <button 
+                      onClick={handleManualReset}
+                      className="bg-[#222] border border-white/5 hover:border-secondary transition-all text-[#00FFCC] font-mono px-4 py-1.5 rounded-full text-[10px] font-extrabold uppercase active:scale-90"
+                    >
+                      Reset Routines
+                    </button>
+                  </div>
+
+                </div>
+              )}
+
+              {/* SCREEN 2: REPORT CARDS & MULTI BADGES */}
+              {activeTab === "stats" && (
+                <div className="space-y-5">
+                  <h2 className="text-left text-xs uppercase font-black text-gray-400 tracking-wider">📊 Personal Combat Stats</h2>
+                  
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="bg-[#0B0B0B] border border-zinc-850 p-4 rounded-[22px] text-left">
+                      <span className="text-zinc-500 text-[8px] font-mono font-bold uppercase block shadow-inner">Perfect Routines Cleared</span>
+                      <h3 className="text-2xl font-black text-[#00FFCC] pt-1">{profile.perfectDaysCount} Days</h3>
+                    </div>
+                    <div className="bg-[#0B0B0B] border border-zinc-850 p-4 rounded-[22px] text-left">
+                      <span className="text-zinc-500 text-[8px] font-mono font-bold uppercase block shadow-inner">Smash power Level</span>
+                      <h3 className="text-2xl font-black text-accent pt-1">LV. {profile.smashPowerLevel} / 5</h3>
+                    </div>
+                  </div>
+
+                  {/* XP Weekly graph */}
+                  <div className="bg-primary/95 p-4 rounded-[22px] border border-[#222] text-left space-y-3.5 select-none">
+                    <span className="text-zinc-500 text-[8.5px] font-mono font-bold uppercase block">Historic routine XP progress</span>
+                    <div className="h-44 flex items-end justify-between pt-6 px-1.5 space-x-2">
+                      {profile.statsWeeklyXP.map((val, idx) => {
+                        const days = ["M", "T", "W", "T", "F", "S", "S"];
+                        const percent = Math.max(10, Math.min(100, Math.round((val / 150) * 100)));
+                        return (
+                          <div key={idx} className="flex-1 flex flex-col items-center space-y-2">
+                            <span className="text-[8px] font-mono text-[#00FFCC] font-bold">{val}</span>
+                            <div className="w-full bg-[#111] border border-zinc-900 rounded-lg h-24 flex items-end">
+                              <div className="bg-accent w-full rounded-t-md transition-all duration-500" style={{ height: `${percent}%` }}></div>
+                            </div>
+                            <span className="text-[9px] font-mono text-zinc-500 font-extrabold">{days[idx]}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Trophy Badges */}
+                  <div className="p-4 bg-primary border border-zinc-900 rounded-[22px] space-y-3 text-left">
+                    <span className="text-[9px] font-mono text-amber-400 font-extrabold uppercase block tracking-wider animate-pulse">🌟 ACQUIRED ATHLETIC ACHIEVEMENT EMBLEMS</span>
+                    <div className="grid grid-cols-2 gap-2 text-[9px]">
+                      {[
+                        { name: "Perfect Athlete", desc: "Clear 100% checklist habits.", icon: "🏅", unlocked: profile.badges.includes("Perfect Athlete") },
+                        { name: "Badminton Aspirant", desc: "Tension skills reaching Level 2.", icon: "🏸", unlocked: profile.level >= 2 },
+                        { name: "Pro Court Striker", desc: "Smash power to level 3.", icon: "🔥", unlocked: profile.level >= 3 },
+                        { name: "Ultimate Court Overlord", desc: "Aura upgrades to Level 4.", icon: "🌌", unlocked: profile.level >= 4 },
+                        { name: "Aegis Defender", desc: "Purchase special defensive shields.", icon: "🛡️", unlocked: profile.badges.includes("Aegis Defender") },
+                        { name: "Relaxation Guru", desc: "Acquired real-life rest support.", icon: "🍵", unlocked: profile.badges.includes("Relaxation Guru") },
+                      ].map((b, i) => (
+                        <div key={i} className={`p-2.5 rounded-xl border ${b.unlocked ? "border-amber-500/20 bg-amber-500/5 text-shadow text-amber-200" : "border-[#1A1A1A] opacity-40 text-zinc-500"}`}>
+                          <div className="flex justify-between font-black items-center">
+                            <span>{b.name}</span>
+                            <span>{b.unlocked ? b.icon : "🔒"}</span>
+                          </div>
+                          <p className="text-[7.5px] text-zinc-550 leading-tight pt-1">{b.desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* SCREEN 3: HIGH PERFORMANCE SHOP */}
+              {activeTab === "shop" && (
+                <div className="space-y-4">
+                  <div className="bg-[#0A0A0A] p-4 border border-[#222] rounded-[22px] flex items-center justify-between">
+                    <div className="text-left">
+                      <span className="text-[9px] font-mono text-zinc-500 uppercase block font-bold">PURCHASE BALANCE</span>
+                      <span className="text-xl font-black text-white">🪙 {profile.coins} Coins</span>
+                    </div>
+                    <span className="text-2xl animate-bounce">🛍️</span>
+                  </div>
+
+                  {/* Passive smash power upgrades */}
+                  <div className="bg-[#0B0B0B] border border-secondary/20 p-4 rounded-[22px] flex items-center justify-between text-left">
+                    <div className="max-w-[70%] space-y-1">
+                      <span className="text-[#00FFCC] text-[8px] font-mono font-black uppercase tracking-widest block">PASSIVE UPGRADE</span>
+                      <h4 className="text-xs font-bold text-white">Enhance Smashing Battle Power</h4>
+                      <p className="text-[10px] text-zinc-500 leading-normal font-bold">Increases visual smash effects (Power: Tier {profile.smashPowerLevel}/5).</p>
+                    </div>
+                    <button 
+                      onClick={upgradeSmashLevel}
+                      disabled={profile.smashPowerLevel >= 5}
+                      className="bg-secondary text-[#0E0E0E] font-black px-4 py-2 rounded-full text-[10px] cursor-pointer"
+                    >
+                      {profile.smashPowerLevel >= 5 ? "MAXED" : "20 COINS"}
+                    </button>
+                  </div>
+
+                  {/* Gear slots */}
+                  <div className="space-y-3">
+                    <span className="text-[9px] font-mono text-zinc-500 uppercase font-black tracking-widest block text-left">WEAPONS & ACTIVE ATHLETE SPANDEX APPAREL</span>
+                    <div className="space-y-2">
+                      {SHOP_ITEMS.map((item) => {
+                        const bought = profile.purchasedItems.includes(item.id);
+                        const equipped = profile.currentShirt === item.value || profile.currentPants === item.value || profile.currentRacket === item.value;
+                        return (
+                          <div key={item.id} className="p-3 bg-[#0A0A0A] rounded-[22.5px] border border-zinc-900 flex items-center justify-between text-left">
+                            <div className="max-w-[70%] space-y-1">
+                              <span className="text-[8px] font-mono text-zinc-500 uppercase font-bold bg-[#151515] px-2 py-0.5 rounded border border-white/5 w-fit block">{item.category}</span>
+                              <h4 className="text-xs font-bold text-white leading-snug">{item.name}</h4>
+                              <p className="text-[10px] text-zinc-500 leading-normal font-bold">{item.description}</p>
+                            </div>
+                            <button 
+                              onClick={() => handleItemBuy(item)}
+                              className={`px-3.5 py-1.5 rounded-full text-[10px] font-extrabold uppercase transition-all ${
+                                equipped 
+                                  ? "bg-secondary text-[#0D0D0D]" 
+                                  : bought 
+                                  ? "bg-[#222] text-[#00FFCC]" 
+                                  : "bg-[#FF3366]/20 text-[#FF3366] hover:bg-[#FF3366] hover:text-white"
+                              }`}
+                            >
+                              {equipped ? "Equipped" : bought ? "Equip" : `${item.cost} c.`}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* SCREEN 4: AI COACH LAB PLATFORMS */}
+              {activeTab === "journal" && (
+                <div className="space-y-5">
+                  <div className="bg-[#0D0D0D] border border-secondary/20 p-4 rounded-[28px] text-left space-y-3.5 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-secondary/5 rounded-full filter blur-xl animate-pulse"></div>
+                    
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-0.5">
+                        <span className="text-secondary text-[8.5px] font-mono font-black uppercase tracking-widest block">AI COACH LABORATORY v2</span>
+                        <h2 className="text-sm font-black text-white uppercase tracking-tight">Active Athletic Diagnostic</h2>
+                      </div>
+                      <span className="text-lg">🧬</span>
+                    </div>
+
+                    {/* Speech Personas overlay selection */}
+                    <div className="flex justify-between items-center bg-black/60 p-2 rounded-2xl">
+                      <span className="text-[8.5px] font-mono font-black uppercase text-zinc-500">Coach Persona Speech Type:</span>
+                      <select 
+                        value={coachSpeechStyle}
+                        onChange={(e) => setCoachSpeechStyle(e.target.value)}
+                        className="bg-[#1C1C1C] text-[9.5px] border border-white/5 rounded px-2 py-0.5 text-[#00FFCC] focus:outline-none focus:border-secondary"
+                      >
+                        <option value="coach_li_ning">Coach Li Ning Style (General)</option>
+                        <option value="drill_sergeant">Drill Sergeant (Menacing Voice)</option>
+                        <option value="sarcastic_robot">Sarcastic Sports Bot 9000</option>
+                      </select>
+                    </div>
+
+                    {/* Modular Lab Core Layers Tabs */}
+                    <div className="grid grid-cols-3 gap-1.5 bg-black/50 p-1 rounded-xl">
+                      {[
+                        { id: "vision", name: "🥗 Diet Check" },
+                        { id: "cognitive", name: "🧠 Study Mind" },
+                        { id: "optimization", name: "⏰ Stretch" },
+                      ].map(t => (
+                        <button 
+                          key={t.id} 
+                          onClick={() => {
+                            setActiveCoachLayer(t.id);
+                            setMealResult(null);
+                            setFeynmanResult(null);
+                          }}
+                          className={`py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                            activeCoachLayer === t.id ? "bg-secondary text-primary font-black" : "text-gray-400 hover:text-white"
+                          }`}
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* LAYER 1 CONTENT: NUTRITION & FOOD */}
+                    {activeCoachLayer === "vision" && (
+                      <div className="space-y-3 pt-1">
+                        <span className="text-[9px] font-mono text-zinc-500 uppercase font-black block text-left">Rainbow Plate Evaluation (3-Color rule)</span>
+                        <textarea 
+                          value={mealText}
+                          onChange={(e) => setMealText(e.target.value)}
+                          placeholder="List culinary details e.g: spinach salad with grilled chicken and orange berries"
+                          className="w-full h-15 bg-[#141414] border border-zinc-800 rounded-xl p-2.5 text-[11px] focus:outline-none focus:border-secondary text-white placeholder-zinc-650"
+                        />
+                        <button 
+                          onClick={runAIPlateScanEvent}
+                          disabled={aiProcessing}
+                          className="w-full bg-[#1C1C1C] hover:bg-zinc-800 border border-secondary text-secondary font-black text-[10px] uppercase tracking-wider py-2 rounded-xl"
+                        >
+                          {aiProcessing ? "RECOGNIZING MEAL PLATES..." : "ANALYZE NUTRITIONAL COLORS"}
+                        </button>
+
+                        {mealResult && (
+                          <div className="p-3 bg-black/85 rounded-xl border border-zinc-850 text-[10px] space-y-1">
+                            <div className="flex justify-between text-secondary">
+                              <span className="font-mono">DETECTED COLORS:</span>
+                              <span className="font-extrabold">{mealResult.metColors.join(", ")}</span>
+                            </div>
+                            <p className="text-zinc-300 italic font-medium pt-1">"{mealResult.feedbackText}"</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* LAYER 2 CONTENT: STUDY RECALL TUTOR */}
+                    {activeCoachLayer === "cognitive" && (
+                      <div className="space-y-3 pt-1">
+                        <span className="text-[9px] font-mono text-zinc-500 uppercase font-black block text-left">Feynman Concept Simplicity Explainer</span>
+                        <textarea 
+                          value={feynmanText}
+                          onChange={(e) => setFeynmanText(e.target.value)}
+                          placeholder="Type technical topics: e.g. how badminton wrist torque controls downward velocity angle..."
+                          className="w-full h-15 bg-[#141414] border border-zinc-800 rounded-xl p-2.5 text-[11px] focus:outline-none focus:border-secondary text-white placeholder-zinc-650"
+                        />
+                        <button 
+                          onClick={handleFeynmanTutorToggle}
+                          disabled={aiProcessing}
+                          className="w-full bg-[#1C1C1C] hover:bg-zinc-800 border border-secondary text-secondary font-black text-[10px] uppercase tracking-wider py-2 rounded-xl"
+                        >
+                          {aiProcessing ? "TUTOR EVALUATING COGNITIVES..." : "SUBMIT SIMPLICITY EXPLANATION"}
+                        </button>
+
+                        {feynmanResult && (
+                          <div className="p-3 bg-black/85 rounded-xl border border-zinc-850 text-[10px] space-y-1 text-left">
+                            <div className="flex justify-between text-secondary">
+                              <span className="font-mono">INTELLIGENCE SCORE:</span>
+                              <span className="font-extrabold">{feynmanResult.grading}</span>
+                            </div>
+                            <p className="text-zinc-300 italic font-medium pt-1">"{feynmanResult.coachCoachComment}"</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* LAYER 3: POSTURE HEALTH CLOCKS */}
+                    {activeCoachLayer === "optimization" && (
+                      <div className="space-y-3 pt-1 text-left">
+                        <span className="text-[9px] font-mono text-zinc-500 uppercase font-black block text-left">Desk Stretch & Spine Alignment Clock (60 Seconds)</span>
+                        <div className="p-4 bg-black/40 rounded-xl border border-zinc-900 flex justify-between items-center">
+                          <div>
+                            <span className="text-xs block font-bold">Stature Align countdown:</span>
+                            <span className="text-indigo-400 font-mono text-xl font-bold">{stretchSeconds}s left</span>
+                          </div>
+                          <button 
+                            onClick={handleStartStretchClocks}
+                            className={`px-4 py-2 rounded-full font-mono text-[10px] font-extrabold uppercase ${stretchClock ? "bg-accent text-white animate-pulse" : "bg-secondary text-primary"}`}
+                          >
+                            {stretchClock ? "⏹️ Off Clocks" : "▶️ Stretch Stature"}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-zinc-550 leading-relaxed leading-normal">
+                          Spines locked flat. When countdown hits zero, your HP stamina regenerates +20 credits immediately automatically by the coach guidance checks logs.
+                        </p>
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* TRADITIONAL TEXT ATHLETE JOURNAL INHERITS BOTTOM LIST */}
+                  <div className="space-y-3.5 text-left">
+                    <span className="text-zinc-500 text-[9.5px] font-mono font-black uppercase tracking-widest block">📝 TRADITIONAL ATHLETE DIARY RECORDS</span>
+                    
+                    <div className="bg-[#0B0B0B] border border-zinc-900 p-4 rounded-[22px] space-y-3">
+                      <span className="text-[9px] text-gray-500 font-mono uppercase font-bold block">Type athletic workout diary logs</span>
+                      <textarea 
+                        value={journalNote}
+                        onChange={(e) => setJournalNote(e.target.value)}
+                        placeholder="Add athlete performance notes, e.g. hydrated 3 liters, studies finished, court aerobics complete!"
+                        className="w-full h-18 bg-[#111] border border-zinc-800 rounded-xl p-3 text-xs focus:outline-none focus:border-secondary text-white placeholder-zinc-700"
+                      />
+                      <div className="flex justify-end">
+                        <button 
+                          onClick={handleAddNote}
+                          className="bg-secondary text-primary font-black text-[10px] uppercase tracking-wider px-4 py-1.5 rounded-full select-none"
+                        >
+                          Send Log entry
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {journalEntries.map((l, idx) => (
+                        <div key={idx} className="p-4 bg-[#0A0A0A] border border-zinc-900 rounded-[22px] space-y-1 shadow-md">
+                          <div className="flex justify-between items-center text-[8.5px] text-secondary font-mono">
+                            <span className="font-extrabold tracking-wider uppercase">ROUTINE JOURNAL NOTES</span>
+                            <span>{l.date}</span>
+                          </div>
+                          <p className="text-xs text-zinc-300 font-sans italic font-medium leading-relaxed">"{l.note}"</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* SCREEN 5: MORE / CONFIGS */}
+              {activeTab === "more" && (
+                <div className="space-y-4 text-left">
+                  <h2 className="text-xs uppercase font-black text-gray-400 tracking-wider">🛠️ Global Systems Console</h3>
+                  
+                  {/* Grid of details */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "leaderboard", name: "Scoreboards", icon: "🏆" },
+                      { id: "calendar", name: "Heatmap Date", icon: "📅" },
+                      { id: "challenges", name: "Bounties Quests", icon: "⚔️" },
+                      { id: "specs", name: "Athlete Specs", icon: "🏸" },
+                    ].map(sub => (
+                      <button 
+                        key={sub.id}
+                        onClick={() => setMoreSubTab(sub.id)}
+                        className={`p-3 rounded-2xl border flex items-center space-x-2.5 text-[10px] font-black uppercase tracking-wider text-left transition-all duration-100 ${
+                          moreSubTab === sub.id 
+                            ? "bg-secondary text-[#0E0E0E] border-secondary font-black" 
+                            : "bg-[#0B0B0B] text-gray-400 border-zinc-900 hover:border-zinc-800"
+                        }`}
+                      >
+                        <span className="text-sm">{sub.icon}</span>
+                        <span>{sub.name}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-zinc-850 pt-4">
+                    {/* MORE TAB sub-option 1: SCOREBOARDS */}
+                    {moreSubTab === "leaderboard" && (
+                      <div className="space-y-3.5">
+                        <span className="text-zinc-500 font-mono text-[9px] uppercase font-bold block">Athletes leaderboard rankings</span>
+                        <div className="space-y-2">
+                          {LEADERBOARD_USERS.map((l, i) => (
+                            <div key={i} className="p-3 bg-[#0A0A0A] rounded-2xl border border-zinc-900 flex justify-between items-center text-xs">
+                              <div className="flex items-center space-x-3">
+                                <span className="font-mono font-black text-gray-500">#{l.rank}</span>
+                                <div>
+                                  <h4 className="font-bold text-white leading-none">{l.name}</h4>
+                                  <span className="text-[8px] text-secondary font-mono uppercase font-bold">{l.racket}</span>
+                                </div>
+                              </div>
+                              <span className="bg-[#111] px-2 py-0.5 rounded border border-white/5 font-mono text-[9.5px] font-black">LV. {l.level}</span>
+                            </div>
+                          ))}
+
+                          {/* Current user */}
+                          <div className="p-3 bg-secondary/15 rounded-2xl border-2 border-secondary/40 flex justify-between items-center text-xs">
+                            <div className="flex items-center space-x-3">
+                              <span className="font-mono font-black text-secondary">#4</span>
+                              <div>
+                                <h4 className="font-bold text-white leading-none">Offline Athlete (You)</h4>
+                                <span className="text-[8.5px] text-zinc-500 font-mono uppercase font-bold capitalize">{profile.currentRacket} racket style</span>
+                              </div>
+                            </div>
+                            <span className="bg-secondary text-[#0D0D0D] font-extrabold px-2.5 py-0.5 rounded-full font-mono text-[9px]">LV. {profile.level}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MORE TAB sub-option 2: CALENDAR HEATMAP */}
+                    {moreSubTab === "calendar" && (
+                      <div className="space-y-3">
+                        <span className="text-zinc-500 font-mono text-[9px] uppercase font-bold block">Routine streak calendars</span>
+                        <div className="p-4 bg-[#0B0B0B] border border-zinc-900 rounded-[22px]">
+                          <div className="grid grid-cols-7 gap-2.5 border-b border-zinc-800 pb-2 text-center text-[8.5px] font-mono text-[#00FFCC] font-bold">
+                            <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                          </div>
+                          <div className="grid grid-cols-7 gap-2 pt-3 text-center text-[10px] font-mono font-extrabold">
+                            {[true, true, false, true, true, true, habits.every(h => h.completedToday)].map((ok, i) => (
+                              <div key={i} className={`aspect-square rounded-lg flex items-center justify-center ${ok ? "bg-secondary text-[#0E0E0E]" : "bg-[#1C1C1C] text-zinc-700"}`}>
+                                <span>{i + 15}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <span className="text-[8.5px] text-zinc-500 block pt-3 leading-normal">Highlighted green days represents core habits fully marked for those historical dates.</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MORE TAB sub-option 3: QUESTS */}
+                    {moreSubTab === "challenges" && (
+                      <div className="space-y-3.5">
+                        <span className="text-zinc-500 font-mono text-[9px] uppercase font-bold block">Strategic Quests roadmaps</span>
+                        <div className="space-y-2.5">
+                          {challenges.map((ch, i) => (
+                            <div key={i} className="p-3.5 bg-[#090909] border border-zinc-900 rounded-[22px] space-y-2 text-xs">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="font-bold text-white leading-none">{ch.name}</h4>
+                                  <p className="text-[9.5px] text-gray-500 leading-normal pt-1">{ch.description}</p>
+                                </div>
+                                <span className="bg-amber-900/10 text-amber-400 font-mono text-[9px] font-black border border-amber-950 px-2 py-0.5 rounded">+{ch.rewardCoins} c.</span>
+                              </div>
+                              <div className="flex items-center space-x-3 font-mono text-[9.5px]">
+                                <div className="flex-1 bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+                                  <div className="bg-[#00FFCC] h-full" style={{ width: `${(ch.current/ch.target)*100}%` }}></div>
+                                </div>
+                                <span className="text-secondary font-black">{ch.completed ? "Done" : `${ch.current}/${ch.target}`}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* MORE TAB sub-option 4: ANIME EVOLUTIONS */}
+                    {moreSubTab === "specs" && (
+                      <div className="space-y-3">
+                        <span className="text-zinc-500 font-mono text-[9px] uppercase font-bold block">Protagonist specs evolution deck</span>
+                        <div className="p-4 bg-[#0B0B0B] rounded-[22px] border border-zinc-900 text-xs text-zinc-300 space-y-2.5">
+                          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono font-bold uppercase tracking-tight">
+                            <span className="text-zinc-500">Racket Custom:</span>
+                            <span className="text-white select-none capitalize">{profile.currentRacket} standard</span>
+                            <span className="text-zinc-500">Active Jersey:</span>
+                            <span className="text-white select-none capitalize">{profile.currentShirt} jersey</span>
+                            <span className="text-zinc-500">Defensive Shields:</span>
+                            <span className="text-secondary select-none">{profile.purchasedItems.includes("custom_shield") ? "ENABLED (Aegis)" : "NONE"}</span>
+                          </div>
+                          <div className="border-t border-zinc-850 pt-2.5">
+                            <span className="text-[8px] font-mono text-[#00FFCC] font-black block uppercase tracking-wider">Evolution state details</span>
+                            {profile.level === 1 && <p className="text-[10px] text-gray-500 pt-1 font-bold">Rookie Recruits stance: Holding basic wooden court frames, casual wear. Evolve to Level 2 to trigger shoes and shuttle athletics.</p>}
+                            {profile.level === 2 && <p className="text-[10px] text-gray-400 pt-1 font-bold">Aspirant Ace: Sporting proper court trainers and standard graphics movement trails.</p>}
+                            {profile.level === 3 && <p className="text-[10px] text-gray-400 pt-1 font-bold">Pro Court Striker: Wear pro teal jerseys, emitting neon pink graphics sparkles.</p>}
+                            {profile.level >= 4 && <p className="text-[10px] text-amber-300 pt-1 font-bold">Crowned Badminton Overlord God: Floating glowing halo rings, emitting majestic gold-dust dynamic particles.</p>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* RESET MATRIX */}
+                  <div className="bg-[#0D0D0D] border border-[#FF3366]/20 p-4 rounded-[22px] flex items-center justify-between text-left mt-6">
+                    <div className="max-w-[70%] space-y-0.5">
+                      <h4 className="text-xs font-bold text-white uppercase">Format Memory Matrix</h3>
+                      <p className="text-[10px] text-zinc-500 font-bold leading-normal">Erase absolute offline sandboxes files cached and stats.</p>
+                    </div>
+                    <button 
+                      onClick={handleFormatDatabase}
+                      className="bg-accent/15 border border-accent/20 text-accent font-mono text-[9px] px-3.5 py-1.5 rounded-full uppercase active:scale-90 duration-100 font-black hover:bg-accent hover:text-white"
+                    >
+                      Delete Profile
+                    </button>
+                  </div>
+
+                </div>
+              )}
+
+            </main>
+
+            {/* FLOATING FOOTER NAVIGATION MENU (Category A - bottom navbar overlays screens) */}
+            <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 bg-[#0E0E0E]/95 border-t border-[#1C1C1C] shadow-[0_-8px_20px_rgba(0,0,0,0.4)] flex items-center justify-around w-full max-w-[480px] pb-safe pt-2 px-3 h-18">
+              {[
+                { id: "home", name: "Arena", icon: "🏸" },
+                { id: "stats", name: "Stats", icon: "📊" },
+                { id: "shop", name: "Shop", icon: "🛍️" },
+                { id: "journal", name: "AI Coach", icon: "🧬" },
+                { id: "more", name: "More", icon: "🛠️" },
+              ].map((tab) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex flex-col items-center justify-center p-2.5 min-w-[56px] transition-all duration-100 cursor-pointer select-none active:scale-90 relative ${
+                      active ? "text-secondary" : "text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    {active && (
+                      <div className="absolute top-0 w-6 h-[2.5px] bg-[#FF3366] rounded-full shadow-[0_3px_8px_#FF3366]" style={{ top: "-8px" }}></div>
+                    )}
+                    <span className="text-lg leading-none active:scale-95">{tab.icon}</span>
+                    <span className="text-[8px] font-mono tracking-wider text-shadow font-extrabold uppercase pt-1">{tab.name}</span>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* DYNAMIC LEVEL UP CINEMATIC DIALOGS */}
+            {showLevelUpCinematic !== null && (
+              <div className="fixed inset-0 z-50 bg-[#000000]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none">
+                <span className="text-[#00FFCC] font-mono text-xs font-black tracking-widest uppercase animate-pulse mb-1 block">EVOLUTION MATRIX AWAKENED</span>
+                <h1 className="text-3xl font-black text-white uppercase tracking-tight">PLAYER LEVEL {showLevelUpCinematic} REACHED!</h1>
+                
+                <div className="w-28 h-28 my-6 rounded-full bg-[#111] border-2 border-secondary p-4 flex items-center justify-center shadow-inner filter drop-shadow-[0_0_12px_rgba(0,255,204,0.3)] select-none">
+                  <span className="text-amber-400 font-sans font-black text-sm uppercase italic tracking-wider animate-bounce">GOD MODE UNLOCKED</span>
+                </div>
+
+                <p className="text-[11px] text-[#A0AEC0] font-sans font-bold leading-relaxed px-5 max-w-xs mb-6">
+                  Congratulations ace! Your stamina parameters, power spikes, and defense scores evolved to a pro badminton challenger standard!
+                </p>
+
+                <button 
+                  onClick={() => setShowLevelUpCinematic(null)}
+                  className="bg-secondary text-primary font-black px-8 py-3 rounded-full text-xs hover:opacity-90 active:scale-95 duration-100 uppercase tracking-widest"
+                >
+                  Return to Arena
+                </button>
+              </div>
+            )}
+
+            {/* PERFECT DAYS BONUS HUD BANNER OUTLETS */}
+            {showPerfectBonusBanner && (
+              <div className="fixed bottom-22 left-1/2 -translate-x-1/2 z-40 bg-secondary/15 border border-secondary px-5 py-2.5 rounded-full shadow-[0_0_20px_#00FFCC] backdrop-blur-md pointer-events-none uppercase flex items-center space-x-2 animate-bounce">
+                <span>🏆</span>
+                <span className="text-[9.5px] font-black text-white tracking-widest">PERFECT TRAINING DAY MET! +50 COINS</span>
+              </div>
+            )}
+
+            {/* ACTIVE VERIFIER GLOBAL MODALS */}
+            <GymEyeModal 
+              isOpen={selectedHabitForAI !== null} 
+              habit={selectedHabitForAI} 
+              onClose={() => setSelectedHabitForAI(null)} 
+              onVerified={executeVerifyAward} 
+              showToast={showToast} 
+            />
+
+            {/* GLOBAL TOAST FEEDBACK OUTLET */}
+            <ToastContainer toasts={toasts} removeToast={removeToast} />
+
+          </div>
+        );
+      }
+
+      // ----------------- MOUNT TO ROOT -----------------
+      const rootElement = document.getElementById("root");
+      const root = ReactDOM.createRoot(rootElement);
+      root.render(<App />);
+    </script>
+  </body>
+</html>

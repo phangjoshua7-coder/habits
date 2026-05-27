@@ -1,0 +1,6 @@
+{
+  "name": "ReadySETGO",
+  "description": "An action-packed sports-themed habit and routines tracker featuring an anime-style badminton combat game where habits power your hero against boss rivals.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
