@@ -205,6 +205,7 @@ export default function App() {
   const [guestOptIn, setGuestOptIn] = useState<boolean>(() => {
     return localStorage.getItem("readyset_guest_opt_in") === "true";
   });
+  const [showAuthTroubleshoot, setShowAuthTroubleshoot] = useState<boolean>(false);
   const [profile, setProfile] = useState<UserProfile>({
     userId: "offline",
     email: "guest@readysetgo.io",
@@ -2077,6 +2078,43 @@ export default function App() {
                   >
                     Continue as Offline Guest
                   </button>
+                </div>
+
+                {/* Troubleshooter for Google Popup Sign-in */}
+                <div className="w-full text-left bg-zinc-900 border border-zinc-800 rounded-xl p-3 space-y-2">
+                  <button 
+                    onClick={() => setShowAuthTroubleshoot(!showAuthTroubleshoot)}
+                    className="w-full flex items-center justify-between text-[10px] font-mono font-bold text-amber-500 hover:text-amber-400 uppercase tracking-wider cursor-pointer text-left"
+                  >
+                    <span>⚠️ popup error? (learn how to fix)</span>
+                    <span className="text-[9px]">{showAuthTroubleshoot ? "▲" : "▼"}</span>
+                  </button>
+                  
+                  {showAuthTroubleshoot && (
+                    <div className="text-[10px] font-sans text-gray-400 space-y-2 pt-1 border-t border-zinc-800/60 leading-relaxed">
+                      <p>
+                        The error <span className="text-white font-mono font-bold">"The requested action is invalid"</span> occurs because Google Sign-In is not enabled on your brand-new Firebase project yet.
+                      </p>
+                      <p className="text-amber-500 font-bold">To Enable Google Sign-In:</p>
+                      <ol className="list-decimal list-inside space-y-1.5 font-sans pl-1">
+                        <li>
+                          Open the <a href="https://console.firebase.google.com/project/artful-hold-88gvj/authentication/providers" target="_blank" rel="noopener noreferrer" className="text-[#00FFCC] underline font-bold">Firebase Authentication console</a>.
+                        </li>
+                        <li>
+                          Click the <span className="text-white font-bold">"Sign-in method"</span> tab.
+                        </li>
+                        <li>
+                          Click <span className="text-white font-bold">"Add new provider"</span> and select <span className="text-[#00FFCC] font-bold">Google</span>.
+                        </li>
+                        <li>
+                          Toggle <span className="text-white font-bold">Enable</span>, pick your support email, and click <span className="text-white font-bold">Save</span>.
+                        </li>
+                      </ol>
+                      <p className="text-[9px] text-zinc-500 italic mt-1 font-mono">
+                        💡 Click "Continue as Offline Guest" above to bypass and train locally right now without configuring anything!
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer security badge */}
