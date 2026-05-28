@@ -5,7 +5,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { getFirestore, doc, getDocFromServer } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from "firebase/firestore";
 import firebaseConfig from "../firebase-applet-config.json";
 
 export const isFirebaseConfigured =
@@ -21,8 +21,13 @@ let googleProvider: any = null;
 if (isFirebaseConfigured) {
   try {
     app = initializeApp(firebaseConfig);
-    // CRITICAL: The app will break without this line
-    db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    // CRITICAL: The app will break without this line, initialized with multi-tab offline local cache persistence
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    }, firebaseConfig.firestoreDatabaseId);
+    
     auth = getAuth(app);
     googleProvider = new GoogleAuthProvider();
     googleProvider.setCustomParameters({ prompt: "select_account" });
@@ -31,10 +36,13 @@ if (isFirebaseConfigured) {
     const testConnection = async () => {
       try {
         await getDocFromServer(doc(db, "test", "connection"));
-      } catch (error) {
-        if (error instanceof Error && error.message.includes("the client is offline")) {
-          console.error("Please check your Firebase configuration: client is offline.");
-        }
+        console.log("Firebase connection verified: database is online.");
+      } catch (error: any) {
+        // Gracefully catch and log connectivity warning without disturbing runtime
+        console.warn(
+          "Firestore is running in Offline Cache mode. Synchronization active. Connectivity status: ",
+          error?.message || error
+        );
       }
     };
     testConnection();

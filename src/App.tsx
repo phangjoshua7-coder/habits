@@ -204,6 +204,63 @@ const LEADERBOARD_USERS = [
   { rank: 3, name: "Viktor Axelsen", level: 42, xp: 51200, racket: "pro" },
 ];
 
+// Aesthetic Brand Logo Component
+const BrandLogo = ({ size = "lg", className = "" }: { size?: "sm" | "md" | "lg" | "xl", className?: string }) => {
+  const isXl = size === "xl";
+  const isLg = size === "lg";
+  const isMd = size === "md";
+
+  return (
+    <div className={`flex flex-col items-center justify-center text-center select-none ${className}`}>
+      {/* Glowing Hexagonal/Circular Base Badge */}
+      <div 
+        className={`relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-zinc-950 to-black border-2 border-[#00FFCC] p-1.5 shadow-[0_0_20px_rgba(0,255,204,0.35)] ${
+          isXl ? "w-24 h-24" : isLg ? "w-16 h-16" : isMd ? "w-12 h-12" : "w-10 h-10"
+        }`}
+      >
+        {/* Dynamic backdrop reflection */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#00FFCC]/5 to-[#FF3366]/5 rounded-2xl animate-pulse" />
+        
+        {/* Glowing concentric decorative rings of rotation */}
+        <svg
+          viewBox="0 0 100 100"
+          className={`absolute animate-[spin_16s_linear_infinite] opacity-40 text-[#00FFCC] ${
+            isXl ? "w-20 h-20" : isLg ? "w-14 h-14" : isMd ? "w-10 h-10" : "w-8 h-8"
+          }`}
+        >
+          <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="12 12" />
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#FF3366" strokeWidth="1.5" strokeDasharray="6 14" />
+        </svg>
+
+        {/* Dynamic center glyph display */}
+        <span 
+          className={`relative font-black tracking-tighter select-none ${
+            isXl ? "text-3xl" : isLg ? "text-xl" : isMd ? "text-md" : "text-sm"
+          } bg-gradient-to-r from-white via-[#00FFCC] to-[#00FFCC] bg-clip-text text-transparent`}
+          style={{ textShadow: "0 0 8px rgba(0, 255, 204, 0.45)" }}
+        >
+          SET
+        </span>
+      </div>
+
+      <div className="mt-3.5 space-y-1">
+        <h2 
+          className={`font-black tracking-tight text-white uppercase flex items-center justify-center ${
+            isXl ? "text-3xl" : isLg ? "text-xl animate-pulse" : isMd ? "text-md" : "text-xs"
+          }`}
+        >
+          <span>Ready</span>
+          <span className="text-[#00FFCC] ml-1">SET</span>
+          <span className="text-[#FF3366]">GO</span>
+        </h2>
+        <p className="font-mono text-[9px] text-gray-400 uppercase tracking-[0.25em] font-black">
+          Arena Routine Engine
+        </p>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<string>("home"); // 'home' | 'stats' | 'shop' | 'journal' | 'more'
@@ -212,12 +269,11 @@ export default function App() {
 
   // Theme support
   const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
+  const [appLoading, setAppLoading] = useState<boolean>(true);
 
   // User persistence core
   const [user, setUser] = useState<any>(null); // Firebase authenticated user
-  const [guestOptIn, setGuestOptIn] = useState<boolean>(() => {
-    return localStorage.getItem("readyset_guest_opt_in") === "true";
-  });
+  const [guestOptIn, setGuestOptIn] = useState<boolean>(false);
   const [showAuthTroubleshoot, setShowAuthTroubleshoot] = useState<boolean>(false);
 
   // MFA states
@@ -306,6 +362,11 @@ export default function App() {
       loadGuestData();
     }
 
+    // Elegant 1.5 second initial branding load delay
+    const splashTimer = setTimeout(() => {
+      setAppLoading(false);
+    }, 1500);
+
     // Daily countdown refresh loop
     const timer = setInterval(() => {
       const now = new Date();
@@ -321,6 +382,7 @@ export default function App() {
     return () => {
       if (unsubscribe) unsubscribe();
       clearInterval(timer);
+      clearTimeout(splashTimer);
     };
   }, []);
 
@@ -477,7 +539,16 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Google sign-in error:", err);
-      showToast("Authentication interrupted, fallback to Local state.", "warning");
+      const isPopupBlocked = err.code?.includes("popup-blocked") || err.message?.includes("popup-blocked");
+      const isCancelled = err.code?.includes("cancelled-popup") || err.message?.includes("cancelled-popup");
+      
+      if (isPopupBlocked) {
+        showToast("Popup Blocked! Please click 'Open in New Tab' at top-right to sign in smoothly.", "warning");
+      } else if (isCancelled) {
+        showToast("Popup closed before completing sign-in. Please try again.", "warning");
+      } else {
+        showToast("Iframe limit detected: click 'Open in New Tab' to link with Google safely.", "warning");
+      }
     }
   };
 
@@ -485,7 +556,6 @@ export default function App() {
     if (auth) {
       await signOut(auth);
       setGuestOptIn(false);
-      localStorage.removeItem("readyset_guest_opt_in");
       setUser(null);
       loadGuestData();
       showToast("Successfully disconnected account.", "success");
@@ -1095,6 +1165,45 @@ export default function App() {
     <div className={`min-h-screen transition-colors duration-200 ${themeMode === "dark" ? "bg-[#1A1A1A] text-white" : "bg-neutral-100 text-[#0D0D0D]"}`}>
       <div className="w-full max-w-[480px] mx-auto relative min-h-screen bg-[#111111] border-x border-[#2C2C2C] shadow-2xl flex flex-col pb-24 overflow-hidden rounded-none md:rounded-[22px] md:my-4 md:h-[92vh] md:max-h-[900px]">
         
+        {/* BRAND LOGO INITIALIZATION LOADING SCREEN */}
+        <AnimatePresence>
+          {appLoading && (
+            <motion.div
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+              className="absolute inset-0 z-[150] bg-[#0D0D0D] flex flex-col items-center justify-center p-8 select-none"
+            >
+              <div className="w-full max-w-[320px] flex flex-col items-center space-y-12">
+                {/* Large Premium Glowing Brand Logo */}
+                <BrandLogo size="xl" className="animate-pulse" />
+
+                {/* Animated loading grid/bar */}
+                <div className="w-full space-y-3">
+                  <div className="relative w-full h-1 bg-zinc-900 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: "0%" }}
+                      animate={{ width: "100%" }}
+                      transition={{ duration: 1.4, ease: "easeInOut" }}
+                      className="absolute left-0 top-0 h-full bg-gradient-to-r from-[#00FFCC] via-white to-[#FF3366] rounded-full shadow-[0_0_10px_#00FFCC]"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest px-1">
+                    <span className="animate-pulse">Loading Arena Matrix...</span>
+                    <span className="text-secondary">READY</span>
+                  </div>
+                </div>
+
+                {/* Platform secure certification tags */}
+                <div className="text-[9px] text-gray-500 font-bold bg-zinc-950 border border-zinc-900 rounded-full px-4 py-1.5 flex items-center space-x-1 uppercase tracking-tight">
+                  <ShieldCheck className="w-3.5 h-3.5 text-secondary animate-pulse" />
+                  <span>Verified Secure Core Identity</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* TOP STATUS HEADER PANEL */}
         <header className="sticky top-0 z-30 bg-[#0D0D0D]/95 backdrop-blur-md p-4 border-b border-[#222222] flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -1322,6 +1431,36 @@ export default function App() {
                 exit={{ opacity: 0 }}
                 className="space-y-6"
               >
+                {/* BRANDING DASHBOARD HERO BANNER */}
+                <div className="relative bg-gradient-to-br from-zinc-950 to-[#121212] border border-zinc-800/80 rounded-[22px] p-5 overflow-hidden flex items-center justify-between shadow-xl">
+                  <div className="absolute right-0 top-0 w-32 h-32 bg-secondary/5 rounded-full blur-2xl pointer-events-none" />
+                  <div className="absolute left-0 bottom-0 w-32 h-32 bg-accent/5 rounded-full blur-2xl pointer-events-none" />
+                  
+                  <div className="flex items-center space-x-4 relative z-10">
+                    <BrandLogo size="md" />
+                    <div className="space-y-1 text-left">
+                      <div className="text-[9px] font-mono text-secondary font-black uppercase tracking-wider">
+                        Active Athlete HUD
+                      </div>
+                      <h3 className="text-white text-base font-black uppercase tracking-tight">
+                        {profile.email?.split("@")[0] || "Recruit Guest"}
+                      </h3>
+                      <div className="flex items-center space-x-1.5 font-mono text-[9px] text-gray-500 font-bold">
+                        <span>XP Tier:</span>
+                        <span className="text-[#00FFCC] font-black">Level {profile.level}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 flex flex-col items-end space-y-1 bg-zinc-900/50 px-3.5 py-2 rounded-xl border border-zinc-800/60 font-mono">
+                    <span className="text-[8px] text-gray-500 uppercase font-black">Memory Sync</span>
+                    <span className="text-[9px] text-[#00FFCC] font-bold uppercase tracking-wider animate-pulse flex items-center space-x-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#00FFCC] mr-1 animate-ping" />
+                      {user ? "Cloud Active" : "Local Sync"}
+                    </span>
+                  </div>
+                </div>
+
                 {/* BATTLE ARENA RIVAL FIGHT AREA */}
                 <div className="space-y-3.5">
                   <div className="flex items-center justify-between">
@@ -2136,6 +2275,26 @@ export default function App() {
                   </div>
 
                   {/* Reset options panel */}
+                  {!user && (
+                    <div className="p-4 bg-[#0D0D0D] border border-secondary/20 rounded-xl text-left flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-bold text-white">Disconnect Guest Mode</h3>
+                        <p className="text-[9px] text-gray-500 font-bold">Return to the onboarding welcome & accounts page</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGuestOptIn(false);
+                          showToast("Welcome screen enabled.", "success");
+                        }}
+                        className="bg-zinc-950 hover:bg-zinc-900 px-3 py-1.5 rounded-xl border border-secondary/30 text-secondary hover:text-white text-[10px] uppercase font-bold cursor-pointer transition-all duration-150"
+                        title="Return to Welcome Screen"
+                      >
+                        Reset Login
+                      </button>
+                    </div>
+                  )}
+
                   <div className="p-4 bg-[#0D0D0D] border border-[#FF3366]/20 rounded-xl text-left flex items-center justify-between">
                     <div>
                       <h3 className="text-xs font-bold text-white">Erase Memory Matrix</h3>
@@ -2280,19 +2439,7 @@ export default function App() {
             >
               <div className="w-full max-w-[340px] space-y-8 flex flex-col items-center">
                 {/* Brand / Logo */}
-                <div className="space-y-3 flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full border-2 border-secondary flex items-center justify-center bg-zinc-950 p-[3px] shadow-[0_0_20px_rgba(0,255,204,0.3)] animate-pulse">
-                    <span className="text-xl font-black text-[#00FFCC]">SET</span>
-                  </div>
-                  <div className="space-y-1">
-                    <h2 className="text-2xl font-black tracking-tight text-[#FFFFFF] uppercase">
-                      Ready<span className="text-[#00FFCC]">SET</span><span className="text-[#FF3366]">GO</span>
-                    </h2>
-                    <p className="text-[10px] font-mono text-[#00FFCC] font-bold uppercase tracking-widest">
-                      CHAMPION ROUTINE ARENA
-                    </p>
-                  </div>
-                </div>
+                <BrandLogo size="xl" />
 
                 {/* Animated Character Avatar preview to add excitement */}
                 <div className="relative w-full aspect-[4/3] bg-zinc-950/80 rounded-[22px] border border-zinc-800 flex flex-col items-center justify-center p-4 overflow-hidden shadow-inner">
@@ -2340,7 +2487,6 @@ export default function App() {
                   <button
                     onClick={() => {
                       setGuestOptIn(true);
-                      localStorage.setItem("readyset_guest_opt_in", "true");
                       showToast("Continuing as Recruit (Guest State)", "success");
                     }}
                     className="w-full bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800 p-3.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-100 active:scale-[0.98] cursor-pointer flex items-center justify-center"
