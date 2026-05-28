@@ -202,6 +202,9 @@ export default function App() {
 
   // User persistence core
   const [user, setUser] = useState<any>(null); // Firebase authenticated user
+  const [guestOptIn, setGuestOptIn] = useState<boolean>(() => {
+    return localStorage.getItem("readyset_guest_opt_in") === "true";
+  });
   const [profile, setProfile] = useState<UserProfile>({
     userId: "offline",
     email: "guest@readysetgo.io",
@@ -219,6 +222,8 @@ export default function App() {
     currentPants: "casual",
     badges: [],
     statsWeeklyXP: [120, 80, 50, 150, 200, 140, 90],
+    currentRivalId: "lining",
+    currentRivalHp: 100,
   });
 
   const [habits, setHabits] = useState<Habit[]>(DEFAULT_HABITS);
@@ -304,7 +309,12 @@ export default function App() {
 
       if (savedProfile) {
         const parsed = JSON.parse(savedProfile);
-        const parsedWithHp = { hp: 100, ...parsed };
+        const parsedWithHp = {
+          hp: 100,
+          currentRivalId: parsed.currentRivalId || (parsed.xp >= 1501 ? "yonex" : parsed.xp >= 501 ? "victor" : "lining"),
+          currentRivalHp: parsed.currentRivalHp !== undefined ? parsed.currentRivalHp : (parsed.xp >= 1501 ? 300 : parsed.xp >= 501 ? 200 : 100),
+          ...parsed
+        };
         setProfile(parsedWithHp);
         checkYesterdayMissesAndAttack(parsedWithHp);
       } else {
@@ -335,7 +345,12 @@ export default function App() {
 
       if (docSnap.exists()) {
         const cloudData = docSnap.data() as UserProfile;
-        const cloudDataWithHp = { hp: 100, ...cloudData };
+        const cloudDataWithHp = {
+          hp: 100,
+          currentRivalId: cloudData.currentRivalId || (cloudData.xp >= 1501 ? "yonex" : cloudData.xp >= 501 ? "victor" : "lining"),
+          currentRivalHp: cloudData.currentRivalHp !== undefined ? cloudData.currentRivalHp : (cloudData.xp >= 1501 ? 300 : cloudData.xp >= 501 ? 200 : 100),
+          ...cloudData
+        };
         setProfile(cloudDataWithHp);
         checkYesterdayMissesAndAttack(cloudDataWithHp);
 
@@ -375,6 +390,8 @@ export default function App() {
           currentPants: "casual",
           badges: [],
           statsWeeklyXP: [120, 80, 50, 150, 200, 140, 90],
+          currentRivalId: "lining",
+          currentRivalHp: 100,
         };
         await setDoc(userRef, initialUserData);
         setProfile(initialUserData);
@@ -428,15 +445,18 @@ export default function App() {
   const triggerGoogleLogout = async () => {
     if (auth) {
       await signOut(auth);
+      setGuestOptIn(false);
+      localStorage.removeItem("readyset_guest_opt_in");
       setUser(null);
       loadGuestData();
       showToast("Successfully disconnected account.", "success");
     }
   };
 
-  // Calculate current active enemy based on permanent XP total
-  const getEnemyDetails = (xp: number) => {
-    if (xp >= 1501) {
+  // Calculate current active enemy based on permanent XP total or current rival state
+  const getEnemyDetails = (xp: number, rivalId?: "lining" | "victor" | "yonex") => {
+    const id = rivalId || (xp >= 1501 ? "yonex" : xp >= 501 ? "victor" : "lining");
+    if (id === "yonex") {
       return {
         id: "yonex" as const,
         name: "Yonex",
@@ -445,7 +465,7 @@ export default function App() {
         hp: 300,
         attackEffect: "Streak disable and XP growth freezes",
       };
-    } else if (xp >= 501) {
+    } else if (id === "victor") {
       return {
         id: "victor" as const,
         name: "Victor",
@@ -474,16 +494,11 @@ export default function App() {
     return 1;
   };
 
-  // Calculates Boss Remaining HP based on today's habit checkmarks
+  // Calculates Boss Remaining HP based on persistent health pool state
   const getBossRemainingHp = () => {
-    const totalCompletions = habits.filter((h) => h.completedToday).length;
-    const enemyInfo = getEnemyDetails(profile.xp);
-    
-    // Deletes HP percentage: 3 tasks fully complete reduces it to 0
-    if (totalCompletions === 3) return 0;
-    if (totalCompletions === 2) return Math.round(enemyInfo.hp * 0.33);
-    if (totalCompletions === 1) return Math.round(enemyInfo.hp * 0.67);
-    return enemyInfo.hp;
+    const rivalId = profile.currentRivalId || (profile.xp >= 1501 ? "yonex" : profile.xp >= 501 ? "victor" : "lining");
+    const enemyInfo = getEnemyDetails(profile.xp, rivalId);
+    return profile.currentRivalHp !== undefined ? profile.currentRivalHp : enemyInfo.hp;
   };
 
   // Attack logic checking: Run on loader mount when user's last date loads
@@ -492,7 +507,7 @@ export default function App() {
     if (profileData.lastCheckDate && profileData.lastCheckDate !== todayStr) {
       // Habit missed detection: check if previous date completed habits is partial
       // For simulator simplicity, randomly trigger rival attack frame if checklist is cleared and not reset
-      const enemyInfo = getEnemyDetails(profileData.xp);
+      const enemyInfo = getEnemyDetails(profileData.xp, profileData.currentRivalId);
       setIsRivalAttacked(enemyInfo.id);
       
       // Perform penalty
@@ -655,6 +670,37 @@ export default function App() {
       freshBadges.push("God of Badminton");
     }
 
+    // Calculate custom smash damage to active rival
+    const baseDamage = targetH.difficulty === "Hard" ? 80 : 40;
+    const damageBoost = (profile.smashPowerLevel || 1) * 10;
+    const finalDamage = baseDamage + damageBoost;
+
+    const rivalId = profile.currentRivalId || (profile.xp >= 1501 ? "yonex" : profile.xp >= 501 ? "victor" : "lining");
+    const rivalMaxHp = rivalId === "yonex" ? 300 : rivalId === "victor" ? 200 : 100;
+    const initialHp = profile.currentRivalHp !== undefined ? profile.currentRivalHp : rivalMaxHp;
+
+    let newRivalHp = Math.max(0, initialHp - finalDamage);
+    let nextRivalId = rivalId;
+    let nextRivalHp = newRivalHp;
+    let rivalChanged = false;
+    let defeatedName = rivalId === "yonex" ? "Yonex" : rivalId === "victor" ? "Victor" : "Li Ning";
+
+    if (newRivalHp <= 0) {
+      // Defeated!
+      rivalChanged = true;
+      if (rivalId === "lining") {
+        nextRivalId = "victor";
+        nextRivalHp = 200;
+      } else if (rivalId === "victor") {
+        nextRivalId = "yonex";
+        nextRivalHp = 300;
+      } else {
+        // Wrap back to lining
+        nextRivalId = "lining";
+        nextRivalHp = 100;
+      }
+    }
+
     // Update profile parameters
     const updatedProfile: UserProfile = {
       ...profile,
@@ -665,6 +711,8 @@ export default function App() {
       perfectDaysCount: checkAllFinished ? profile.perfectDaysCount + 1 : profile.perfectDaysCount,
       badges: freshBadges,
       lastCheckDate: new Date().toISOString().split("T")[0],
+      currentRivalId: nextRivalId,
+      currentRivalHp: nextRivalHp,
     };
 
     setProfile(updatedProfile);
@@ -674,11 +722,18 @@ export default function App() {
     showToast(`Verification Successful: +${xpGain} XP | +${coinGain} Coins ${comments}`, "success");
     setSelectedHabitForAI(null);
 
-    // Track if target boss is defeated
-    const totalComs = updatedHabits.filter((h) => h.completedToday).length;
-    if (totalComs === 3) {
+    // Dynamic Rival Action Notifications
+    if (rivalChanged) {
       setEnemyDefeated(true);
-      showToast("Enemy badminton Boss has been smashed off the court!", "award");
+      sound.playLevelUp();
+      setTimeout(() => {
+        showToast(`🏆 VICTORY! You smashed Rival ${defeatedName} off the court!`, "award");
+        const nextDetails = getEnemyDetails(nextXp, nextRivalId);
+        showToast(`🔥 Active challenger updated: ${nextDetails.name} has entered!`, "success");
+        setEnemyDefeated(false);
+      }, 500);
+    } else {
+      showToast(`💥 Smashed Rival for ${finalDamage} damage! (${newRivalHp} HP remaining)`, "success");
     }
   };
 
@@ -879,6 +934,8 @@ export default function App() {
         currentPants: "casual",
         badges: [],
         statsWeeklyXP: [120, 80, 50, 150, 200, 140, 90],
+        currentRivalId: "lining",
+        currentRivalHp: 100,
       });
       setHabits(DEFAULT_HABITS);
       setChallenges(BOUNTY_CHALLENGES);
@@ -1021,7 +1078,7 @@ export default function App() {
             <div className="flex items-center space-x-2.5 text-left text-[11px] font-bold text-[#FF3366] leading-snug">
               <span className="w-2.5 h-2.5 rounded-full bg-[#FF3366] animate-ping" />
               <span>
-                Yesterday check missed! Rival **{getEnemyDetails(profile.xp).name}** triggered active attack penalty!
+                Yesterday check missed! Rival **{getEnemyDetails(profile.xp, profile.currentRivalId).name}** triggered active attack penalty!
               </span>
             </div>
             <button
@@ -1111,7 +1168,7 @@ export default function App() {
 
                           {/* Right Boss rival character */}
                           <div className="space-y-1">
-                            <EnemySVG id={getEnemyDetails(profile.xp).id} damageShake={enemyShake} />
+                            <EnemySVG id={getEnemyDetails(profile.xp, profile.currentRivalId).id} damageShake={enemyShake} />
                             <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 block font-bold text-center">Badminton Boss</span>
                           </div>
 
@@ -1138,14 +1195,14 @@ export default function App() {
                     <div className="flex justify-between items-center text-[11px] font-bold text-gray-400 mb-1">
                       <span className="text-gray-200">Rival Defense Index</span>
                       <span className="font-mono text-secondary uppercase font-bold">
-                        {getBossRemainingHp()} / {getEnemyDetails(profile.xp).hp} HP
+                        {getBossRemainingHp()} / {getEnemyDetails(profile.xp, profile.currentRivalId).hp} HP
                       </span>
                     </div>
                     <div className="w-full bg-[#1C1C1C] h-3 rounded-full overflow-hidden border border-[#2C2C2C] p-[1.5px] relative">
                       <motion.div
                         layout
                         initial={{ width: "100%" }}
-                        animate={{ width: `${(getBossRemainingHp() / getEnemyDetails(profile.xp).hp) * 100}%` }}
+                        animate={{ width: `${(getBossRemainingHp() / getEnemyDetails(profile.xp, profile.currentRivalId).hp) * 100}%` }}
                         className="bg-secondary h-full rounded-full"
                       />
                     </div>
@@ -1938,6 +1995,95 @@ export default function App() {
               <span className="text-xs font-black text-white text-shadow tracking-widest whitespace-nowrap">
                 PERFECT DAY! +50 COINS ADDED
               </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* FORCE LOGIN OR GUEST PROMPT OVERLAY */}
+        <AnimatePresence>
+          {!user && !guestOptIn && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[100] bg-[#0D0D0D]/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center"
+            >
+              <div className="w-full max-w-[340px] space-y-8 flex flex-col items-center">
+                {/* Brand / Logo */}
+                <div className="space-y-3 flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-full border-2 border-secondary flex items-center justify-center bg-zinc-950 p-[3px] shadow-[0_0_20px_rgba(0,255,204,0.3)] animate-pulse">
+                    <span className="text-xl font-black text-[#00FFCC]">SET</span>
+                  </div>
+                  <div className="space-y-1">
+                    <h2 className="text-2xl font-black tracking-tight text-[#FFFFFF] uppercase">
+                      Ready<span className="text-[#00FFCC]">SET</span><span className="text-[#FF3366]">GO</span>
+                    </h2>
+                    <p className="text-[10px] font-mono text-[#00FFCC] font-bold uppercase tracking-widest">
+                      CHAMPION ROUTINE ARENA
+                    </p>
+                  </div>
+                </div>
+
+                {/* Animated Character Avatar preview to add excitement */}
+                <div className="relative w-full aspect-[4/3] bg-zinc-950/80 rounded-[22px] border border-zinc-800 flex flex-col items-center justify-center p-4 overflow-hidden shadow-inner">
+                  <div className="absolute inset-0 opacity-10 pointer-events-none flex flex-col justify-between p-2">
+                    <div className="h-px bg-white w-full"></div>
+                    <div className="h-px bg-secondary w-1/2"></div>
+                  </div>
+                  {/* Small badge showing Offline / Online options */}
+                  <div className="absolute top-2.5 right-2 text-[8px] font-mono uppercase bg-zinc-900 border border-zinc-700 text-zinc-400 px-2 py-0.5 rounded-full font-bold">
+                    Anime-Style Training
+                  </div>
+                  {/* Display Avatar in Cadet Stance */}
+                  <div className="transform scale-90">
+                    <AvatarSVG 
+                      level={1} 
+                      racketType="wood" 
+                      shirtColor="casual" 
+                      pantsColor="casual" 
+                      hasBadge={false} 
+                      isSmashing={false} 
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-sm font-extrabold tracking-tight text-white uppercase">
+                    Select Your Profile Engine
+                  </h3>
+                  <p className="text-[11px] font-sans text-gray-400 font-medium leading-relaxed">
+                    Link with Google to sync stats, achievements, and gear purchases across all viewports. Or continue as guest to store data locally in this browser.
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="w-full space-y-3 pt-2">
+                  <button
+                    onClick={async () => {
+                      await triggerGoogleLogin();
+                    }}
+                    className="w-full bg-[#00FFCC] text-[#0D0D0D] p-3.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-100 hover:opacity-90 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2"
+                  >
+                    <span>Connect with Google Account</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setGuestOptIn(true);
+                      localStorage.setItem("readyset_guest_opt_in", "true");
+                      showToast("Continuing as Recruit (Guest State)", "success");
+                    }}
+                    className="w-full bg-zinc-950 hover:bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800 p-3.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all duration-100 active:scale-[0.98] cursor-pointer flex items-center justify-center"
+                  >
+                    Continue as Offline Guest
+                  </button>
+                </div>
+
+                {/* Footer security badge */}
+                <div className="text-[8px] font-mono text-gray-500 uppercase tracking-widest font-bold flex items-center space-x-1">
+                  <span>🔒 Offline state is strictly sandboxed</span>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

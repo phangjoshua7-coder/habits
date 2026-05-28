@@ -20,6 +20,8 @@ export interface UserProfile {
   currentPants: string; // 'casual' | 'sport' | 'gold_pants'
   badges: string[]; // Earned achievement badges
   statsWeeklyXP: number[]; // 7 days of XP history e.g. [120, 80, 50, 150, 200, 140, 90]
+  currentRivalId?: "lining" | "victor" | "yonex"; // Current active boss on court
+  currentRivalHp?: number; // Current rival remaining health pool
 }
 
 export interface Habit {
