@@ -852,13 +852,19 @@ export default function App() {
       freshBadges.push("God of Badminton");
     }
 
-    // Calculate custom smash damage to active rival
-    const baseDamage = targetH.difficulty === "Hard" ? 80 : 40;
-    const damageBoost = (profile.smashPowerLevel || 1) * 10;
-    const finalDamage = baseDamage + damageBoost;
-
+    // Calculate custom smash damage to active rival based on a percentage of the rival's maximum HP
     const rivalId = profile.currentRivalId || (profile.xp >= 1501 ? "yonex" : profile.xp >= 501 ? "victor" : "lining");
     const rivalMaxHp = rivalId === "yonex" ? 300 : rivalId === "victor" ? 200 : 100;
+
+    // Base damage is percentage-based: 40% of Max HP for Hard, 25% of Max HP for Medium/Easy
+    const basePercent = targetH.difficulty === "Hard" ? 40 : 25;
+    // Racket Smash Power Level adds 5% additional damage boost per level
+    const powerBonusPercent = (profile.smashPowerLevel || 1) * 5;
+    const finalDamagePercent = basePercent + powerBonusPercent;
+
+    // Directly calculate final numeric damage based on rival max HP percentage
+    const finalDamage = Math.round((rivalMaxHp * finalDamagePercent) / 100);
+
     const initialHp = profile.currentRivalHp !== undefined ? profile.currentRivalHp : rivalMaxHp;
 
     let newRivalHp = Math.max(0, initialHp - finalDamage);
@@ -909,13 +915,13 @@ export default function App() {
       setEnemyDefeated(true);
       sound.playLevelUp();
       setTimeout(() => {
-        showToast(`🏆 VICTORY! You smashed Rival ${defeatedName} off the court!`, "award");
+        showToast(`🏆 VICTORY! You smashed Rival ${defeatedName} off the court! Dealt ${finalDamage} damage (-${finalDamagePercent}% Rival HP)!`, "award");
         const nextDetails = getEnemyDetails(nextXp, nextRivalId);
         showToast(`🔥 Active challenger updated: ${nextDetails.name} has entered!`, "success");
         setEnemyDefeated(false);
       }, 500);
     } else {
-      showToast(`💥 Smashed Rival for ${finalDamage} damage! (${newRivalHp} HP remaining)`, "success");
+      showToast(`💥 Smashed Rival: Dealt ${finalDamage} damage (-${finalDamagePercent}% Rival HP)! (${newRivalHp} HP remaining)`, "success");
     }
   };
 
