@@ -27,6 +27,10 @@ import {
   LogOut,
   ChevronRight,
   ShieldCheck,
+  ShieldAlert,
+  Copy,
+  Check,
+  Key,
   Coins,
   Cpu,
   Trophy,
@@ -35,6 +39,14 @@ import {
 
 // Types
 import { UserProfile, Habit, HistoryLog, ShopItem, ChallengeQuest } from "./types";
+
+// MFA helpers
+import {
+  generateMfaSecret,
+  generateTOTPCode,
+  verifyMfaCode,
+  getMfaCountdown,
+} from "./lib/mfaUtils";
 
 // Firebase helpers
 import {
@@ -58,6 +70,7 @@ import {
 // Visual illustrations & audio effects
 import { AvatarSVG, EnemySVG } from "./components/AnimeSVGs";
 import { sound } from "./components/AudioEffects";
+import { MfaQRCodeSVG } from "./components/MfaQRCodeSVG";
 import { NotificationToast, ToastMessage } from "./components/NotificationToast";
 import { AIVerifierModal } from "./components/AIVerifierModal";
 import { AICoachLab } from "./components/AICoachLab";
@@ -206,6 +219,16 @@ export default function App() {
     return localStorage.getItem("readyset_guest_opt_in") === "true";
   });
   const [showAuthTroubleshoot, setShowAuthTroubleshoot] = useState<boolean>(false);
+
+  // MFA states
+  const [isMfaLocked, setIsMfaLocked] = useState<boolean>(false);
+  const [showMfaSetupModal, setShowMfaSetupModal] = useState<boolean>(false);
+  const [showMfaDisableModal, setShowMfaDisableModal] = useState<boolean>(false);
+  const [mfaSetupSecret, setMfaSetupSecret] = useState<string>("");
+  const [mfaInputCode, setMfaInputCode] = useState<string>("");
+  const [mfaFeedbackError, setMfaFeedbackError] = useState<boolean>(false);
+  const [mfaCurrentCountdown, setMfaCurrentCountdown] = useState<number>(30);
+
   const [profile, setProfile] = useState<UserProfile>({
     userId: "offline",
     email: "guest@readysetgo.io",
@@ -301,6 +324,15 @@ export default function App() {
     };
   }, []);
 
+  // 2. MFA Live Countdown Sync
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const countdown = getMfaCountdown();
+      setMfaCurrentCountdown(countdown.seconds);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const loadGuestData = () => {
     try {
       const savedProfile = localStorage.getItem("readyset_profile");
@@ -317,6 +349,9 @@ export default function App() {
           ...parsed
         };
         setProfile(parsedWithHp);
+        if (parsedWithHp.mfaEnabled) {
+          setIsMfaLocked(true);
+        }
         checkYesterdayMissesAndAttack(parsedWithHp);
       } else {
         const todayStr = new Date().toISOString().split("T")[0];
@@ -353,6 +388,9 @@ export default function App() {
           ...cloudData
         };
         setProfile(cloudDataWithHp);
+        if (cloudDataWithHp.mfaEnabled) {
+          setIsMfaLocked(true);
+        }
         checkYesterdayMissesAndAttack(cloudDataWithHp);
 
         // Fetch subcollection user habits
@@ -451,6 +489,79 @@ export default function App() {
       setUser(null);
       loadGuestData();
       showToast("Successfully disconnected account.", "success");
+    }
+  };
+
+  // MFA Activation & Verification Actions
+  const startMfaActivation = () => {
+    const freshSecret = generateMfaSecret();
+    setMfaSetupSecret(freshSecret);
+    setMfaInputCode("");
+    setMfaFeedbackError(false);
+    setShowMfaSetupModal(true);
+  };
+
+  const handleMfaCodeChange = (val: string, purpose: "lock" | "setup" | "disable") => {
+    const sanitized = val.replace(/[^0-9]/g, "").slice(0, 6);
+    setMfaInputCode(sanitized);
+    setMfaFeedbackError(false);
+    
+    // Auto-trigger verification when 6 digits are fully typed
+    if (sanitized.length === 6) {
+      if (purpose === "lock") {
+        const isMatch = verifyMfaCode(profile.mfaSecret || "", sanitized);
+        if (isMatch) {
+          sound.playCompletion();
+          setIsMfaLocked(false);
+          setMfaInputCode("");
+          showToast("🔒 Athlete Double-Defense Shield Decoded & Unlocked!", "success");
+        } else {
+          setMfaFeedbackError(true);
+          sound.playSmash(); // Sound feedback
+          showToast("Validation Failed! Code does not match 2FA cycles.", "warning");
+          setMfaInputCode("");
+        }
+      } else if (purpose === "setup") {
+        const isMatch = verifyMfaCode(mfaSetupSecret, sanitized);
+        if (isMatch) {
+          sound.playCompletion();
+          const updatedProfile = {
+            ...profile,
+            mfaEnabled: true,
+            mfaSecret: mfaSetupSecret,
+          };
+          setProfile(updatedProfile);
+          syncToStorage(updatedProfile, habits);
+          setShowMfaSetupModal(false);
+          setMfaInputCode("");
+          showToast("🛡️ Athlete Dual-MFA Active Shield Enabled Successfully!", "success");
+        } else {
+          setMfaFeedbackError(true);
+          sound.playSmash();
+          showToast("Incorrect Code! Verification failed, please try again.", "warning");
+          setMfaInputCode("");
+        }
+      } else if (purpose === "disable") {
+        const isMatch = verifyMfaCode(profile.mfaSecret || "", sanitized);
+        if (isMatch) {
+          sound.playCompletion();
+          const updatedProfile = {
+            ...profile,
+            mfaEnabled: false,
+            mfaSecret: undefined,
+          };
+          setProfile(updatedProfile);
+          syncToStorage(updatedProfile, habits);
+          setShowMfaDisableModal(false);
+          setMfaInputCode("");
+          showToast("MFA Security Shield Deactivated.", "warning");
+        } else {
+          setMfaFeedbackError(true);
+          sound.playSmash();
+          showToast("Deactivation code invalid. Shield remains active.", "warning");
+          setMfaInputCode("");
+        }
+      }
     }
   };
 
@@ -916,8 +1027,21 @@ export default function App() {
   };
 
   const triggerDataReset = () => {
-    if (confirm("Reset athlete profile and erase levels / achievements?")) {
-      localStorage.clear();
+    if (profile.mfaEnabled) {
+      const entered = prompt("🛡️ MFA SECURITY LOCK:\nEnter your active 6-digit Authenticator passcode to authorize memory erasure:");
+      if (!entered) return;
+      const isMatch = verifyMfaCode(profile.mfaSecret || "", entered);
+      if (!isMatch) {
+        sound.playSmash();
+        showToast("MFA verification failure. Access to erase memory matrix is denied.", "warning");
+        return;
+      }
+    } else {
+      if (!confirm("Reset athlete profile and erase levels / achievements?")) {
+        return;
+      }
+    }
+    localStorage.clear();
       setProfile({
         userId: "offline",
         email: "guest@readysetgo.io",
@@ -942,7 +1066,6 @@ export default function App() {
       setChallenges(BOUNTY_CHALLENGES);
       setJournalEntries([]);
       showToast("Athlete matrix reset complete.", "warning");
-    }
   };
 
   // Helper calculating leveling percentage progress
@@ -1019,7 +1142,103 @@ export default function App() {
           </div>
         </header>
 
-        {/* TOP LEVEL PROGRESSION BAR PANEL */}
+        {isMfaLocked ? (
+          <div className="flex-1 overflow-y-auto px-6 py-12 flex flex-col items-center justify-center text-center bg-[#0d0d0d] z-20 space-y-8">
+            <div className="relative">
+              <div className="absolute inset-0 bg-[#FF3366]/20 rounded-full blur-xl animate-[pulse_2s_infinite]" />
+              <div className="relative w-22 h-22 rounded-2xl bg-[#151515] border border-rose-500/20 flex items-center justify-center text-[#FF3366] shadow-2xl">
+                <ShieldAlert className="w-10 h-10" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="text-xl font-black uppercase text-white tracking-tight flex items-center justify-center space-x-2">
+                <span>MFA SHIELD LOCK ACTIVE</span>
+              </h2>
+              <p className="text-xs text-gray-400 font-bold max-w-sm mx-auto leading-relaxed">
+                A dynamic second layer of protection is active for athlete profile{" "}
+                <span className="text-[#FF3366] font-mono">{profile.email || "guest@readysetgo.io"}</span>.
+              </p>
+            </div>
+
+            <div className="space-y-4 w-full max-w-xs">
+              <div className="relative">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={mfaInputCode}
+                  onChange={(e) => handleMfaCodeChange(e.target.value, "lock")}
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10 text-center text-transparent bg-transparent"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoFocus
+                />
+                
+                <div className="flex justify-center space-x-2.5">
+                  {Array.from({ length: 6 }).map((_, idx) => {
+                    const digit = mfaInputCode[idx] || "";
+                    const isFocused = mfaInputCode.length === idx;
+                    return (
+                      <div
+                        key={idx}
+                        className={`w-11 h-13 rounded-xl border flex items-center justify-center font-mono text-lg font-extrabold transition-all duration-150 ${
+                          mfaFeedbackError
+                            ? "border-rose-500 bg-rose-500/10 text-rose-500 animate-pulse"
+                            : isFocused
+                            ? "border-[#FF3366] bg-[#FF3366]/10 shadow-[0_0_8px_rgba(255,51,102,0.3)] text-[#FF3366]"
+                            : digit
+                            ? "border-zinc-700 bg-zinc-900/80 text-white"
+                            : "border-zinc-800 bg-[#070707] text-gray-500"
+                        }`}
+                      >
+                        {digit || "•"}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-normal">
+                Enter your 6-digit passcode to authenticate
+              </p>
+            </div>
+
+            <div className="w-full bg-[#1A1A1A]/80 border border-zinc-900/60 p-4 rounded-2xl text-left space-y-2 max-w-sm">
+              <div className="flex items-center space-x-2 text-[#00FFCC]">
+                <Key className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-mono font-black uppercase tracking-wide">Sync Live Assist</span>
+              </div>
+              <p className="text-[10px] text-gray-400 font-medium leading-relaxed">
+                MFA helps safeguard your levels, custom outfits, rackets, and streak achievements. Open Google Authenticator or your authenticator app to copy the current 6-digit key.
+              </p>
+              
+              <div className="pt-2 border-t border-zinc-800 flex justify-between items-center">
+                <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">Synchronized timer</span>
+                <span className="text-[9px] font-mono font-black text-[#00FFCC] bg-[#00FFCC]/10 px-2 py-0.5 rounded">
+                  {mfaCurrentCountdown}s left
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Reset athlete profile state because you lost your authenticator device? This wipes milestones.")) {
+                    localStorage.clear();
+                    window.location.reload();
+                  }
+                }}
+                className="text-[9px] font-mono text-zinc-600 hover:text-white underline font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Lost Device? Clear Milestone Cache
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* TOP LEVEL PROGRESSION BAR PANEL */}
         <div className="px-5 py-3.5 bg-[#0D0D0D] border-b border-[#2C2C2C] text-left space-y-3">
           {/* Level name & Coins & info */}
           <div className="flex justify-between items-center text-[10px] font-mono font-bold uppercase tracking-wide">
@@ -1869,6 +2088,53 @@ export default function App() {
                     </button>
                   </div>
 
+                  {/* Multi-Factor Authentication Shield card */}
+                  <div className="p-4 bg-[#0D0D0D] border border-zinc-900 rounded-xl text-left flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-xs font-bold text-white uppercase tracking-tight">MFA Security Shield</h3>
+                        {profile.mfaEnabled ? (
+                          <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[8px] font-mono font-black uppercase px-2 py-0.5 rounded">
+                            ACTIVE
+                          </span>
+                        ) : (
+                          <span className="bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[8px] font-mono font-black uppercase px-2 py-0.5 rounded">
+                            INACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-gray-500 font-bold mt-0.5 leading-relaxed">
+                        {profile.mfaEnabled
+                          ? `Secured: Authenticator Shared Key Key synced`
+                          : "Fortify your court statistics & level milestones"}
+                      </p>
+                    </div>
+                    
+                    {profile.mfaEnabled ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMfaInputCode("");
+                          setMfaFeedbackError(false);
+                          setShowMfaDisableModal(true);
+                        }}
+                        className="bg-primary hover:bg-zinc-900 p-2 rounded-full border border-rose-500/30 text-rose-400 hover:text-white cursor-pointer transition-colors"
+                        title="Deactivate MFA Shield"
+                      >
+                        <ShieldAlert className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={startMfaActivation}
+                        className="bg-primary hover:bg-zinc-900 p-2 rounded-full border border-secondary/30 text-secondary hover:text-white cursor-pointer transition-colors"
+                        title="Enable MFA Authentication"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
                   {/* Reset options panel */}
                   <div className="p-4 bg-[#0D0D0D] border border-[#FF3366]/20 rounded-xl text-left flex items-center justify-between">
                     <div>
@@ -1999,6 +2265,9 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+
+          </>
+        )}
 
         {/* FORCE LOGIN OR GUEST PROMPT OVERLAY */}
         <AnimatePresence>
@@ -2134,6 +2403,210 @@ export default function App() {
           onVerificationSuccess={triggerVerifySuccess}
           showToast={showToast}
         />
+
+        {/* MFA SETUP TWO-FACTOR DIALOG OVERLAY */}
+        <AnimatePresence>
+          {showMfaSetupModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 bg-[#070707]/95 backdrop-blur-md flex flex-col justify-end"
+            >
+              <motion.div
+                initial={{ y: 150 }}
+                animate={{ y: 0 }}
+                exit={{ y: 150 }}
+                className="bg-[#111111] border-t border-zinc-900 rounded-t-[28px] p-6 space-y-5 overflow-y-auto max-h-[92%]"
+              >
+                {/* Modal Title Banner */}
+                <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
+                  <div className="flex items-center space-x-2 text-secondary">
+                    <ShieldCheck className="w-5 h-5" />
+                    <h3 className="text-sm font-black uppercase tracking-tight">Activate MFA Shield</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMfaSetupModal(false)}
+                    className="text-zinc-500 hover:text-white font-mono text-[10px] uppercase font-bold px-2.5 py-1 rounded bg-zinc-900 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                {/* Instructions */}
+                <div className="space-y-4">
+                  <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 space-y-1 text-left leading-relaxed">
+                    <span className="text-[10px] font-mono text-zinc-400 font-extrabold uppercase">Step 1: Scan QR or Sync Secret Key</span>
+                    <p className="text-[10px] text-zinc-500 font-bold leading-relaxed">
+                      Link your device with authenticator apps. Scan the virtual vector code below or manually insert the secure hash.
+                    </p>
+                  </div>
+
+                  {/* SVG Code display */}
+                  <div className="flex flex-col items-center justify-center space-y-3 py-1">
+                    <MfaQRCodeSVG value={`otpauth://totp/ReadySetGo:${profile.email || "guest"}?secret=${mfaSetupSecret.replace(/-/g, "")}&issuer=ReadySetGo`} />
+                    
+                    <div className="w-full max-w-xs flex items-center justify-between bg-zinc-950 border border-zinc-900 px-3 py-2 rounded-xl text-xs font-mono">
+                      <span className="text-gray-400 select-all font-bold tracking-tight text-[10px]">
+                        HASH: {mfaSetupSecret}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(mfaSetupSecret);
+                          showToast("Copied Shared Secret Hash!", "success");
+                        }}
+                        className="text-[#00FFCC] hover:text-white bg-[#00FFCC]/10 hover:bg-[#00FFCC]/20 p-1.5 rounded-lg border border-secondary/20 cursor-pointer transition-colors"
+                        title="Copy Key Code"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 space-y-3 text-left">
+                    <span className="text-[10px] font-mono text-zinc-400 font-extrabold uppercase">Step 2: Enter Verification OTP Code</span>
+                    <p className="text-[10px] text-zinc-500 font-bold">
+                      Enter the 6-digit active number from google/microsoft authenticator to verify precision.
+                    </p>
+
+                    <div className="relative pt-1 flex flex-col items-center">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={mfaInputCode}
+                        onChange={(e) => handleMfaCodeChange(e.target.value, "setup")}
+                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10 text-center"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="••••••"
+                        autoFocus
+                      />
+                      
+                      {/* Flex display squares */}
+                      <div className="flex space-x-2.5">
+                        {Array.from({ length: 6 }).map((_, idx) => {
+                          const digit = mfaInputCode[idx] || "";
+                          const isFocused = mfaInputCode.length === idx;
+                          return (
+                            <div
+                              key={idx}
+                              className={`w-10 h-12 rounded-xl border flex items-center justify-center font-mono text-base font-extrabold transition-all duration-150 ${
+                                mfaFeedbackError
+                                  ? "border-rose-500 bg-rose-500/10 text-rose-500"
+                                  : isFocused
+                                  ? "border-secondary bg-secondary/15 shadow-[0_0_8px_rgba(0,191,156,0.3)] text-secondary"
+                                  : digit
+                                  ? "border-zinc-700 bg-zinc-900/80 text-white"
+                                  : "border-zinc-800 bg-[#070707] text-gray-500"
+                              }`}
+                            >
+                              {digit || "•"}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-[9px] font-mono font-bold text-gray-400 pt-1.5">
+                      <span>Live step cycle</span>
+                      <span className="text-secondary bg-secondary/10 px-1.5 py-0.5 rounded">
+                        {mfaCurrentCountdown}s left
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* MFA DEACTIVATE TWO-FACTOR DIALOG OVERLAY */}
+        <AnimatePresence>
+          {showMfaDisableModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-50 bg-[#070707]/95 backdrop-blur-md flex flex-col justify-end"
+            >
+              <motion.div
+                initial={{ y: 150 }}
+                animate={{ y: 0 }}
+                exit={{ y: 150 }}
+                className="bg-[#111111] border-t border-zinc-800 rounded-t-[28px] p-6 space-y-6"
+              >
+                {/* Header title */}
+                <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
+                  <div className="flex items-center space-x-2 text-rose-400">
+                    <ShieldAlert className="w-5 h-5" />
+                    <h3 className="text-sm font-black uppercase tracking-tight">Disable Security Shield</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMfaDisableModal(false);
+                      setMfaInputCode("");
+                    }}
+                    className="text-zinc-500 hover:text-white font-mono text-[10px] uppercase font-bold px-2.5 py-1 rounded bg-zinc-900 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-center">
+                  <p className="text-[11px] text-gray-400 font-medium leading-relaxed max-w-xs mx-auto">
+                    Warning! Disabling Two-Factor protection exposes your stats to potential manipulation. Verify validation code to proceed.
+                  </p>
+
+                  <div className="relative pt-2 flex flex-col items-center">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={mfaInputCode}
+                      onChange={(e) => handleMfaCodeChange(e.target.value, "disable")}
+                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                    />
+                    
+                    {/* Grid Display */}
+                    <div className="flex space-x-2.5">
+                      {Array.from({ length: 6 }).map((_, idx) => {
+                        const digit = mfaInputCode[idx] || "";
+                        const isFocused = mfaInputCode.length === idx;
+                        return (
+                          <div
+                            key={idx}
+                            className={`w-10 h-12 rounded-xl border flex items-center justify-center font-mono text-base font-extrabold transition-all duration-150 ${
+                              mfaFeedbackError
+                                ? "border-rose-500 bg-rose-500/10 text-rose-500"
+                                : isFocused
+                                ? "border-rose-400 bg-rose-400/10 shadow-[0_0_8px_rgba(239,68,68,0.3)] text-rose-400"
+                                : digit
+                                ? "border-zinc-700 bg-zinc-900/80 text-white"
+                                : "border-zinc-800 bg-[#070707] text-gray-500"
+                            }`}
+                          >
+                            {digit || "•"}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center text-[9px] font-mono font-bold text-gray-400 px-3">
+                    <span>Validation sequence speed</span>
+                    <span className="text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded">
+                      {mfaCurrentCountdown}s remaining
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* TOAST SYSTEM OUTLET */}
         <NotificationToast toasts={toasts} removeToast={removeToast} />

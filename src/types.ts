@@ -22,6 +22,8 @@ export interface UserProfile {
   statsWeeklyXP: number[]; // 7 days of XP history e.g. [120, 80, 50, 150, 200, 140, 90]
   currentRivalId?: "lining" | "victor" | "yonex"; // Current active boss on court
   currentRivalHp?: number; // Current rival remaining health pool
+  mfaEnabled?: boolean; // Multi-Factor Authentication active status
+  mfaSecret?: string; // Authenticator shared key / seed
 }
 
 export interface Habit {
